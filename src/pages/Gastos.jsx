@@ -1,16 +1,14 @@
-export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, listaProveedores, mostrarAlerta, cargarTodo, supabase }) {
+export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, listaProveedores, mostrarAlerta, cargarTodo, supabase, lista }) {
   const categorias = ["Mano de obra", "Insumo Agricola", "Flete", "Mto (Mantenimiento)", "S.Publicos", "Arriendos"];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Validación de campos obligatorios
     if (!gastoForm.invernadero_id || !gastoForm.monto || !gastoForm.descripcion) {
       mostrarAlerta("Invernadero, Monto y Descripción son obligatorios", "error");
       return;
     }
 
-    // MAPEADO EXACTO A TU TABLA 'EGRESOS'
     const datosEgresos = {
       invernadero_id: gastoForm.invernadero_id,
       descripcion: gastoForm.descripcion,
@@ -19,7 +17,7 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
       proveedor_id: gastoForm.proveedor_id || null,
       numero_comprobante: gastoForm.numero_comprobante,
       nota: gastoForm.nota,
-      fecha_gasto: gastoForm.fecha || new Date().toISOString().split('T')[0] // Columna exacta de tu DB
+      fecha_gasto: gastoForm.fecha || new Date().toISOString().split('T')[0]
     };
 
     const { error } = await supabase.from('egresos').insert([datosEgresos]);
@@ -29,8 +27,6 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
       mostrarAlerta("Error al guardar: " + error.message, "error");
     } else {
       mostrarAlerta("Gasto registrado con éxito", "exito");
-      
-      // LIMPIEZA DE LOS CUADRITOS
       setGastoForm({ 
         descripcion: '', 
         categoria: 'Mano de obra', 
@@ -41,13 +37,13 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
         nota: '', 
         fecha: new Date().toISOString().split('T')[0] 
       });
-      
-      cargarTodo(); // Actualiza el Dashboard
+      cargarTodo();
     }
   };
 
   return (
-    <div className="space-y-6 pb-20">
+    <div className="space-y-10 pb-20">
+      {/* FORMULARIO DE REGISTRO */}
       <div className="bg-white p-6 md:p-8 rounded-3xl shadow-xl border-t-8 border-red-600">
         <div className="flex items-center gap-2 mb-8 border-b pb-4">
           <span className="text-xl">📉</span>
@@ -124,6 +120,64 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
             Guardar Gasto en Bitácora
           </button>
         </form>
+      </div>
+
+      {/* TABLA DE CONSULTA DE GASTOS */}
+      <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-200">
+        <div className="p-5 bg-gray-50 border-b-2 border-gray-200 flex justify-between items-center">
+          <h3 className="font-black text-slate-700 text-xs uppercase tracking-widest">Gastos Registrados</h3>
+          <span className="bg-red-100 text-red-700 text-[10px] font-bold px-3 py-1 rounded-full uppercase">Historial</span>
+        </div>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-[11px] border-collapse">
+            <thead>
+              <tr className="bg-gray-200 text-slate-600 uppercase tracking-tighter font-black">
+                <th className="p-4 border-b-2 border-gray-300">Invernadero</th>
+                <th className="p-4 border-b-2 border-gray-300">Fecha</th>
+                <th className="p-4 border-b-2 border-gray-300">Categoría</th>
+                <th className="p-4 border-b-2 border-gray-300">Proveedor</th>
+                <th className="p-4 border-b-2 border-gray-300 text-right">Monto</th>
+                <th className="p-4 border-b-2 border-gray-300 text-center">Factura</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y-2 divide-gray-200">
+              {lista?.map((item, index) => (
+                <tr 
+                  key={item.id} 
+                  className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-100'} hover:bg-yellow-50 transition-colors`}
+                >
+                  <td className="p-4 font-bold text-slate-800 border-l-4 border-red-600">
+                    {item.invernaderos?.nombre || 'N/A'}
+                  </td>
+                  <td className="p-4 text-slate-600 font-medium">
+                    {item.fecha_gasto}
+                  </td>
+                  <td className="p-4">
+                    <span className="bg-slate-200 text-slate-700 px-2 py-1 rounded text-[9px] font-bold">
+                      {item.categoria}
+                    </span>
+                  </td>
+                  <td className="p-4 text-slate-600">
+                    {item.proveedores?.nombre || '---'}
+                  </td>
+                  <td className="p-4 text-right font-black text-red-600">
+                    ${new Intl.NumberFormat('es-CO').format(item.monto)}
+                  </td>
+                  <td className="p-4 text-center font-mono text-slate-500">
+                    {item.numero_comprobante || '---'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          
+          {(!lista || lista.length === 0) && (
+            <div className="p-10 text-center text-gray-400 italic">
+              No hay gastos registrados todavía.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

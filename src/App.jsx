@@ -214,7 +214,7 @@ function App() {
           {tab === 'gastos' && (
             <Gastos 
               gastoForm={gastoForm} setGastoForm={setGastoForm} 
-              listaInvernaderos={listaInvernaderos} listaProveedores={listaProveedores} 
+              listaInvernaderos={listaInvernaderos} listaProveedores={listaProveedores}  lista={datosEgresos}
               mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} supabase={supabase} 
             />
           )}
