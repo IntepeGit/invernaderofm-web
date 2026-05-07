@@ -213,12 +213,17 @@ function App() {
           )}
 
           {tab === 'gastos' && (
-            <Gastos 
-              gastoForm={gastoForm} setGastoForm={setGastoForm} 
-              listaInvernaderos={listaInvernaderos} listaProveedores={listaProveedores}  
-                            mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} supabase={supabase} 
-            />
-          )}
+  <Gastos 
+    gastoForm={gastoForm} 
+    setGastoForm={setGastoForm} 
+    listaInvernaderos={listaInvernaderos} 
+    listaProveedores={listaProveedores} 
+    mostrarAlerta={mostrarAlerta} 
+    cargarTodo={cargarTodo} 
+    supabase={supabase} 
+    datosEgresos={datosEgresos} // <--- AGREGAR ESTO PARA QUE SE VEAN LOS REGISTROS
+  />
+)}
 
           {/* Sub-secciones de Configuración Individuales */}
           {/* Sub-secciones de Configuración con Listas */}
