@@ -4,8 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 
-// --- PASO 1: IMPORTACIONES CRÍTICAS ---
-// Asegúrate de que los nombres de los archivos coincidan exactamente (mayúsculas/minúsculas)
+// Importaciones de componentes
 import Login from './pages/Login.jsx'
 import Ventas from './pages/Ventas.jsx' 
 import Gastos from './pages/Gastos.jsx'
@@ -17,6 +16,9 @@ function App() {
   const [session, setSession] = useState(null)
   const [tab, setTab] = useState('dashboard')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [showConfigSubmenu, setShowConfigSubmenu] = useState(false) // Estado para el submenú
+  
+  // Estados de datos
   const [datosVentas, setDatosVentas] = useState([])
   const [datosEgresos, setDatosEgresos] = useState([])
   const [listaInvernaderos, setListaInvernaderos] = useState([])
@@ -25,6 +27,7 @@ function App() {
   const [balancesGrafica, setBalancesGrafica] = useState([])
   const [notificacion, setNotificacion] = useState({ visible: false, mensaje: '', tipo: 'exito' });
 
+  // Manejo de sesión
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -40,7 +43,7 @@ function App() {
     setTimeout(() => setNotificacion(prev => ({ ...prev, visible: false })), 3000);
   };
 
-  // Estados de Formularios
+  // Estados de Formularios (Originales)
   const [ventaForm, setVentaForm] = useState({ 
     numero_remision: '', 
     cliente_id: '', 
@@ -106,7 +109,7 @@ function App() {
   }
 
   const NavItem = ({ id, label, icon }) => (
-    <button onClick={() => { setTab(id); setIsMenuOpen(false); }} 
+    <button onClick={() => { setTab(id); setIsMenuOpen(false); setShowConfigSubmenu(false); }} 
       className={`flex items-center gap-3 w-full p-4 rounded-xl transition ${tab === id ? 'bg-green-700 text-white' : 'text-green-100 hover:bg-green-800'}`}>
       <span className="text-xl">{icon}</span> <span className="font-bold text-sm capitalize">{label}</span>
     </button>
@@ -116,15 +119,53 @@ function App() {
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans overflow-hidden">
+      {/* Sidebar con Submenú */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-green-900 shadow-2xl transform ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static transition-transform duration-300 flex flex-col`}>
         <div className="p-8 text-center border-b border-green-800">
-          <h2 className="text-white font-black text-2xl">🚜 GRANJA WP</h2>
+          <h2 className="text-white font-black text-2xl tracking-tighter">🚜 GRANJA WP</h2>
         </div>
-        <nav className="p-4 space-y-2 flex-1">
+        <nav className="p-4 space-y-2 flex-1 overflow-y-auto">
           <NavItem id="dashboard" label="Dashboard" icon="📊" />
           <NavItem id="ventas" label="Ventas" icon="💰" />
           <NavItem id="gastos" label="Gastos" icon="📉" />
-          <NavItem id="configuracion" label="Configuración" icon="⚙️" />
+          
+          {/* Botón Padre Configuración */}
+          <div className="space-y-1">
+            <button 
+              onClick={() => setShowConfigSubmenu(!showConfigSubmenu)}
+              className={`flex items-center justify-between w-full p-4 rounded-xl transition ${tab.startsWith('config-') ? 'bg-green-800 text-white' : 'text-green-100 hover:bg-green-800'}`}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-xl">⚙️</span>
+                <span className="font-bold text-sm">Configuración</span>
+              </div>
+              <span className="text-xs">{showConfigSubmenu ? '▲' : '▼'}</span>
+            </button>
+
+             {showConfigSubmenu && (
+      <div className="pl-6 space-y-1 animate-in slide-in-from-top-2 duration-200">
+        <button 
+          onClick={() => { setTab('config-inv'); setIsMenuOpen(false); }} 
+          className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-inv' ? 'text-white bg-green-700' : 'text-green-300 hover:bg-green-800'}`}
+        >
+          <span className="text-lg">🏠</span> Invernaderos
+        </button>
+        <button 
+          onClick={() => { setTab('config-cli'); setIsMenuOpen(false); }} 
+          className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-cli' ? 'text-white bg-green-700' : 'text-green-300 hover:bg-green-800'}`}
+        >
+          <span className="text-lg">👥</span> Clientes
+        </button>
+        <button 
+          onClick={() => { setTab('config-prov'); setIsMenuOpen(false); }} 
+          className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-prov' ? 'text-white bg-green-700' : 'text-green-300 hover:bg-green-800'}`}
+        >
+          <span className="text-lg">🚚</span> Proveedores
+        </button>
+      </div>
+    )}
+  </div>
+
           <button onClick={() => supabase.auth.signOut()} className="flex items-center gap-3 w-full p-4 rounded-xl text-red-200 hover:bg-red-900/50 mt-10">
             <span>🚪</span> <span className="text-sm font-bold">Cerrar Sesión</span>
           </button>
@@ -132,24 +173,26 @@ function App() {
       </aside>
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="bg-white p-4 shadow-sm flex justify-between items-center">
+        <header className="bg-white p-4 shadow-sm flex justify-between items-center lg:px-10">
           <button className="lg:hidden text-2xl p-2 text-green-900" onClick={() => setIsMenuOpen(true)}>☰</button>
-          <h1 className="text-2xl font-black text-green-900">GRANJA WP</h1>
+          <h1 className="text-xl font-black text-green-900 tracking-tight uppercase">
+            {tab.replace('config-', 'Configuración: ')}
+          </h1>
           <div className="w-10"></div>
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-10 space-y-10">
           {tab === 'dashboard' && (
             <div className="bg-white p-6 rounded-3xl shadow-sm">
-              <h3 className="font-black text-gray-400 text-[10px] mb-8 uppercase tracking-widest text-center">Balance Consolidado</h3>
+              <h3 className="font-black text-gray-400 text-[10px] mb-8 uppercase tracking-widest text-center">Balance Consolidado por Invernadero</h3>
               <div className="h-80 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={balancesGrafica}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="name" fontSize={10} />
-                    <YAxis fontSize={10} />
-                    <Tooltip />
-                    <Legend />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
+                    <YAxis fontSize={10} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ borderRadius: '15px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                    <Legend iconType="circle" />
                     <Bar dataKey="Ingresos" fill="#3b82f6" radius={[6, 6, 0, 0]} />
                     <Bar dataKey="Gastos" fill="#ef4444" radius={[6, 6, 0, 0]} />
                     <Bar dataKey="Utilidad" fill="#10b981" radius={[6, 6, 0, 0]} />
@@ -159,43 +202,57 @@ function App() {
             </div>
           )}
 
-          {/* --- PASO 2: RENDERIZADO DE COMPONENTES --- */}
           {tab === 'ventas' && (
             <Ventas 
-              ventaForm={ventaForm} 
-              setVentaForm={setVentaForm} 
-              listaClientes={listaClientes} 
-              listaInvernaderos={listaInvernaderos} 
-              actualizarFilaVenta={actualizarFilaVenta} 
-              guardarVentaCompleta={guardarVentaCompleta} 
+              ventaForm={ventaForm} setVentaForm={setVentaForm} 
+              listaClientes={listaClientes} listaInvernaderos={listaInvernaderos} 
+              actualizarFilaVenta={actualizarFilaVenta} guardarVentaCompleta={guardarVentaCompleta} 
               datosVentas={datosVentas} 
             />
           )}
 
           {tab === 'gastos' && (
             <Gastos 
-              gastoForm={gastoForm} 
-              setGastoForm={setGastoForm} 
-              listaInvernaderos={listaInvernaderos} 
-              listaProveedores={listaProveedores} 
-              mostrarAlerta={mostrarAlerta} 
-              cargarTodo={cargarTodo} 
-              supabase={supabase} 
+              gastoForm={gastoForm} setGastoForm={setGastoForm} 
+              listaInvernaderos={listaInvernaderos} listaProveedores={listaProveedores} 
+              mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} supabase={supabase} 
             />
           )}
 
-          {tab === 'configuracion' && (
-            <div className="space-y-10 pb-24">
-              <ConfigInv invForm={invForm} setInvForm={setInvForm} mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} supabase={supabase} />
-              <ConfigCli cliForm={cliForm} setCliForm={setCliForm} mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} supabase={supabase} />
-              <ConfigProv provForm={provForm} setProvForm={setProvForm} mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} supabase={supabase} />
-            </div>
-          )}
+          {/* Sub-secciones de Configuración Individuales */}
+          {/* Sub-secciones de Configuración con Listas */}
+{tab === 'config-inv' && (
+  <ConfigInv 
+    invForm={invForm} setInvForm={setInvForm} 
+    mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} 
+    supabase={supabase} 
+    lista={listaInvernaderos} // <--- Pasamos la lista
+  />
+)}
+
+{tab === 'config-cli' && (
+  <ConfigCli 
+    cliForm={cliForm} setCliForm={setCliForm} 
+    mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} 
+    supabase={supabase} 
+    lista={listaClientes} // <--- Pasamos la lista
+  />
+)}
+
+{tab === 'config-prov' && (
+  <ConfigProv 
+    provForm={provForm} setProvForm={setProvForm} 
+    mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} 
+    supabase={supabase} 
+    lista={listaProveedores} // <--- Pasamos la lista
+  />
+)}
         </main>
       </div>
 
+      {/* Notificaciones */}
       {notificacion.visible && (
-        <div className="fixed bottom-10 right-10 z-[100] bg-white border border-green-100 p-6 rounded-2xl shadow-2xl flex items-center gap-3">
+        <div className="fixed bottom-10 right-10 z-[100] bg-white border border-green-100 p-6 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5">
           <span className="text-2xl">{notificacion.tipo === 'exito' ? '✅' : '❌'}</span>
           <p className="text-sm font-bold text-green-800">{notificacion.mensaje}</p>
         </div>
