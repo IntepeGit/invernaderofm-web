@@ -58,11 +58,12 @@ function App() {
 
   async function cargarTodo() {
     if (!session) return;
-    const { data: v } = await supabase.from('ventas').select('*, clientes(*), invernaderos(*)')
+    const { data: v } = await supabase.from('ventas').select('*, clientes(*), invernaderos(*), detalle_ventas(*)') // <--- ¡Asegúrate de incluir detalle_ventas(*)!
     const { data: e } = await supabase.from('egresos').select('*, invernaderos(*), proveedores(*)')
     const { data: i } = await supabase.from('invernaderos').select('*')
     const { data: c } = await supabase.from('clientes').select('*')
     const { data: p } = await supabase.from('proveedores').select('*')
+    
 
     setDatosVentas(v || []); setDatosEgresos(e || []); setListaInvernaderos(i || []); setListaClientes(c || []); setListaProveedores(p || [])
 
@@ -214,8 +215,8 @@ function App() {
           {tab === 'gastos' && (
             <Gastos 
               gastoForm={gastoForm} setGastoForm={setGastoForm} 
-              listaInvernaderos={listaInvernaderos} listaProveedores={listaProveedores}  lista={datosEgresos}
-              mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} supabase={supabase} 
+              listaInvernaderos={listaInvernaderos} listaProveedores={listaProveedores}  
+                            mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} supabase={supabase} 
             />
           )}
 
