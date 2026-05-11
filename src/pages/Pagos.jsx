@@ -15,10 +15,10 @@ export default function Pagos({ listaClientes, datosDespachos, guardarPago, dato
     minimumFractionDigits: 0 
   }).format(valor || 0);
 
-  // 1. Obtener la remisión seleccionada actualmente
+  // 1. Obtener la remisión seleccionada actualmente con sus productos
   const remisionSeleccionada = datosDespachos?.find(r => r.id?.toString() === pagoForm.despacho_id?.toString());
 
-  // 2. Obtener todos los abonos asociados a esa remisión específica
+  // 2. Obtener abonos asociados
   const historialAbonos = datosPagos
     ?.filter(p => p.despacho_id?.toString() === pagoForm.despacho_id?.toString())
     .sort((a, b) => new Date(a.fecha_pago) - new Date(b.fecha_pago));
@@ -37,18 +37,19 @@ export default function Pagos({ listaClientes, datosDespachos, guardarPago, dato
     if (montoAbono > saldoActual) return mostrarAlerta("EL VALOR SUPERA EL SALDO PENDIENTE", "error");
 
     guardarPago(pagoForm);
-    setPagoForm({ ...pagoForm, monto: 0, referencia: `Abono a Remisión ${remisionSeleccionada?.numero_remision}` });
+    setPagoForm({ ...pagoForm, monto: 0, referencia: '' });
   };
 
   return (
     <div className="space-y-6 pb-20">
+      {/* FORMULARIO DE REGISTRO */}
       <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-blue-700">
         <h3 className="font-black text-blue-900 uppercase text-sm mb-6 italic">💳 Registro de Pagos</h3>
         
         <form onSubmit={manejarEnvio} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase px-1">Cliente</label>
+              <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Cliente</label>
               <select className="w-full border-2 p-3 rounded-xl font-bold bg-white"
                 value={pagoForm.cliente_id}
                 onChange={(e) => setPagoForm({...pagoForm, cliente_id: e.target.value, despacho_id: ''})} required>
@@ -58,7 +59,7 @@ export default function Pagos({ listaClientes, datosDespachos, guardarPago, dato
             </div>
 
             <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase px-1">Remisión</label>
+              <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">N° Remisión</label>
               <select className="w-full border-2 p-3 rounded-xl font-bold bg-white"
                 value={pagoForm.despacho_id}
                 onChange={(e) => setPagoForm({...pagoForm, despacho_id: e.target.value, monto: 0})}
@@ -71,7 +72,7 @@ export default function Pagos({ listaClientes, datosDespachos, guardarPago, dato
             </div>
 
             <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase px-1">Fecha de Abono</label>
+              <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Fecha Abono</label>
               <input type="date" className="w-full border-2 p-3 rounded-xl font-bold"
                 value={pagoForm.fecha_pago}
                 onChange={(e) => setPagoForm({...pagoForm, fecha_pago: e.target.value})} required />
@@ -79,86 +80,108 @@ export default function Pagos({ listaClientes, datosDespachos, guardarPago, dato
           </div>
 
           {remisionSeleccionada && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-blue-50 p-4 rounded-2xl border border-blue-100">
-              <div>
-                <label className="text-[10px] font-black text-blue-700 uppercase italic">Valor del Nuevo Abono</label>
-                <input 
-                  type="text" 
-                  className="w-full p-3 bg-white rounded-xl font-black text-xl text-blue-900 border-2 border-blue-200 outline-none focus:border-blue-500"
-                  value={formatoPesos(pagoForm.monto)}
-                  onChange={(e) => setPagoForm({...pagoForm, monto: e.target.value.replace(/\D/g, "")})}
-                  required
-                />
+            <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 shadow-inner">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-blue-700 uppercase italic px-1">Valor del Nuevo Abono</label>
+                  <input type="text" className="w-full p-4 bg-white rounded-xl font-black text-2xl text-blue-900 border-2 border-blue-200 outline-none focus:border-blue-500"
+                    value={formatoPesos(pagoForm.monto)}
+                    onChange={(e) => setPagoForm({...pagoForm, monto: e.target.value.replace(/\D/g, "")})} required />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-500 uppercase italic px-1">Saldo Pendiente Actual</label>
+                  <div className="w-full p-4 bg-slate-100 rounded-xl border-2 border-slate-200 flex items-center">
+                    <p className={`text-2xl font-black ${saldoActual <= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatoPesos(saldoActual)}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase px-1">Referencia</label>
-                <input className="w-full border-2 p-3 rounded-xl font-bold bg-white"
-                  value={pagoForm.referencia}
-                  onChange={(e) => setPagoForm({...pagoForm, referencia: e.target.value})}
-                  placeholder="Ej: Transferencia Bancolombia" />
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                <div className="md:col-span-2 space-y-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Referencia / Nota de Pago</label>
+                  <input className="w-full border-2 p-3 rounded-xl font-bold bg-white outline-none focus:border-blue-500"
+                    value={pagoForm.referencia}
+                    onChange={(e) => setPagoForm({...pagoForm, referencia: e.target.value})}
+                    placeholder="Ej: Transferencia Bancolombia / Efectivo" />
+                </div>
+                <button type="submit" className="bg-blue-700 text-white font-black py-4 rounded-xl shadow-lg uppercase hover:bg-blue-800 transition-all active:scale-95">
+                  Registrar Abono
+                </button>
               </div>
-              <button type="submit" className="md:col-span-2 bg-blue-700 text-white font-black py-4 rounded-xl shadow-lg uppercase hover:bg-blue-800 transition-all">
-                Registrar Abono
-              </button>
             </div>
           )}
         </form>
       </div>
 
-      {/* HISTORIAL VERTICAL DE LA REMISIÓN SELECCIONADA */}
+      {/* FICHA TÉCNICA Y DETALLE DE PRODUCTOS */}
       {remisionSeleccionada ? (
-        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden border-2 border-slate-300 animate-in fade-in zoom-in duration-300">
+        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden border-2 border-slate-300">
           <div className="bg-slate-800 p-4 text-white flex justify-between items-center">
-            <h3 className="font-black uppercase text-xs tracking-widest italic">Resumen de Cuenta: Remisión {remisionSeleccionada.numero_remision}</h3>
-            <span className="bg-blue-600 px-3 py-1 rounded-full text-[10px] font-black uppercase">Detalle Vertical</span>
+            <h3 className="font-black uppercase text-xs tracking-widest italic">Ficha de Remisión: {remisionSeleccionada.numero_remision}</h3>
+            <span className="bg-green-600 px-3 py-1 rounded-full text-[10px] font-black uppercase">Detalle de Carga</span>
           </div>
 
           <div className="p-6 space-y-6">
-            {/* Encabezado Principal */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 border-b pb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-b pb-6">
+              {/* Info Cliente */}
               <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase">Cliente</p>
-                <p className="font-black text-lg text-slate-800 uppercase">{remisionSeleccionada.clientes?.nombre_completo}</p>
+                <p className="text-[10px] font-black text-gray-400 uppercase italic">Cliente</p>
+                <p className="font-black text-xl text-slate-800 uppercase leading-tight">{remisionSeleccionada.clientes?.nombre_completo}</p>
+                <p className="text-xs font-bold text-slate-500 mt-1">Fecha: {remisionSeleccionada.fecha_venta}</p>
               </div>
-              <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase">Fecha Despacho</p>
-                <p className="font-black text-lg text-slate-800">{remisionSeleccionada.fecha_venta}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] font-black text-green-600 uppercase">Valor Total Venta</p>
-                <p className="font-black text-2xl text-green-700">{formatoPesos(remisionSeleccionada.total_venta)}</p>
+
+              {/* PRODUCTOS TRAÍDOS AUTOMÁTICAMENTE */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                <p className="text-[10px] font-black text-blue-600 uppercase mb-3 tracking-widest italic">Contenido de la Remisión</p>
+                <div className="space-y-2">
+                  {remisionSeleccionada.detalle_ventas?.map((item, i) => (
+                    <div key={i} className="flex justify-between items-center border-b border-slate-200 pb-1">
+                      <p className="text-xs font-black text-slate-700 uppercase">{item.descripcion}</p>
+                      <p className="text-xs font-black text-blue-700 bg-blue-100 px-2 py-0.5 rounded-md">
+                        {item.cantidad} {item.escala}
+                      </p>
+                    </div>
+                  ))}
+                  <div className="pt-2 flex justify-between">
+                    <p className="text-[10px] font-black text-slate-400 uppercase italic">Valor Total Venta:</p>
+                    <p className="text-sm font-black text-green-700">{formatoPesos(remisionSeleccionada.total_venta)}</p>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Lista Vertical de Abonos */}
+            {/* CRONOLOGÍA DE ABONOS */}
             <div className="space-y-3">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cronología de Abonos</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Historial de Abonos Recibidos</p>
               {historialAbonos?.length > 0 ? (
                 historialAbonos.map((abono, idx) => (
-                  <div key={abono.id} className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border-l-4 border-blue-500 shadow-sm">
+                  <div key={abono.id} className="bg-gray-50 p-4 rounded-xl border-l-4 border-blue-500 shadow-sm flex flex-col md:flex-row md:justify-between md:items-center gap-2">
                     <div className="flex items-center gap-4">
-                      <span className="bg-blue-100 text-blue-700 w-8 h-8 rounded-full flex items-center justify-center font-black text-xs">
-                        {idx + 1}
-                      </span>
+                      <span className="bg-blue-100 text-blue-700 w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shrink-0">{idx + 1}</span>
                       <div>
-                        <p className="text-[10px] font-bold text-gray-500 uppercase">Abono {idx + 1}</p>
-                        <p className="font-black text-slate-700 text-sm">{abono.fecha_pago}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-black text-slate-700 text-sm">{abono.fecha_pago}</p>
+                          {abono.referencia && (
+                            <span className="text-[10px] font-bold text-blue-800 italic uppercase bg-blue-100 px-2 rounded-md">
+                              {abono.referencia}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">{abono.referencia || 'Sin nota'}</p>
-                      <p className="font-black text-blue-700 text-lg">+{formatoPesos(abono.monto)}</p>
-                    </div>
+                    <p className="font-black text-blue-700 text-lg">+{formatoPesos(abono.monto)}</p>
                   </div>
                 ))
               ) : (
-                <div className="text-center py-6 bg-gray-50 rounded-xl border-2 border-dashed">
-                  <p className="text-xs font-bold text-gray-400 uppercase italic">No se han registrado abonos para esta remisión</p>
+                <div className="text-center py-6 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                  <p className="text-xs font-bold text-gray-400 uppercase italic">Sin pagos registrados</p>
                 </div>
               )}
             </div>
 
-            {/* Pie de Ficha: Saldo Final */}
+            {/* SALDO FINAL */}
             <div className="bg-slate-900 p-6 rounded-2xl flex justify-between items-center text-white shadow-xl">
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Total Abonado</p>
@@ -175,9 +198,7 @@ export default function Pagos({ listaClientes, datosDespachos, guardarPago, dato
         </div>
       ) : (
         <div className="bg-blue-50 border-2 border-dashed border-blue-200 p-12 rounded-3xl text-center">
-          <p className="text-blue-400 font-black uppercase text-xs italic">
-            Seleccione una remisión arriba para ver su historial de pagos detallado
-          </p>
+          <p className="text-blue-400 font-black uppercase text-xs italic">Seleccione una remisión para cargar el detalle de productos</p>
         </div>
       )}
     </div>

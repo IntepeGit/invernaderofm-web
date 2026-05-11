@@ -1,13 +1,16 @@
-export default function Despachos({ despachoForm, setDespachoForm, listaClientes, listaInvernaderos, actualizarFilaDespacho, guardarDespachoCompleto, datosDespachos, datosPagos, mostrarAlerta }) {
+import React from 'react';
+
+export default function Despachos({ 
+  despachoForm, 
+  setDespachoForm, 
+  listaClientes, 
+  listaInvernaderos, 
+  actualizarFilaDespacho, 
+  guardarDespachoCompleto, 
+  datosDespachos 
+}) {
   
   const opcionesEscala = ["Kilo", "Bulto", "Caja", "Unidad", "Gramos", "Canastilla"];
-
-  // Validación de N° de Remisión duplicado
-  const remisionExiste = datosDespachos?.some(d => d.numero_remision?.toString() === despachoForm.numero_remision?.toString());
-
-  const totalFormulario = (despachoForm?.filas || []).reduce((acc, fila) => {
-    return acc + (parseFloat(fila.cantidad || 0) * parseFloat(fila.precio || 0));
-  }, 0);
 
   const formatoPesos = (valor) => new Intl.NumberFormat('es-CO', { 
     style: 'currency', 
@@ -15,142 +18,171 @@ export default function Despachos({ despachoForm, setDespachoForm, listaClientes
     minimumFractionDigits: 0 
   }).format(valor || 0);
 
-  const manejarEnvio = (e) => {
-    e.preventDefault();
-    if (remisionExiste) {
-      mostrarAlerta(`El N° de Remisión ${despachoForm.numero_remision} ya existe.`, "error");
-      return;
-    }
-    guardarDespachoCompleto(e);
+  // Cálculo del gran total del despacho
+  const totalFormulario = (despachoForm?.filas || []).reduce((acc, fila) => {
+    return acc + (parseFloat(fila.cantidad || 0) * parseFloat(fila.precio || 0));
+  }, 0);
+
+  const agregarFila = () => {
+    setDespachoForm({
+      ...despachoForm,
+      filas: [...despachoForm.filas, { producto: '', escala: '', cantidad: '', precio: '' }]
+    });
+  };
+
+  const eliminarFila = (index) => {
+    if (despachoForm.filas.length === 1) return;
+    const nuevasFilas = despachoForm.filas.filter((_, i) => i !== index);
+    setDespachoForm({ ...despachoForm, filas: nuevasFilas });
   };
 
   return (
     <div className="space-y-6 pb-20">
-      {/* FORMULARIO DE REGISTRO */}
-      <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-green-700">
-        <div className="flex justify-between items-center mb-6">
+      {/* TARJETA DE REGISTRO */}
+      <div className="bg-white p-6 md:p-8 rounded-3xl shadow-xl border-t-8 border-green-700">
+        <div className="flex justify-between items-start mb-6">
           <div className="flex items-center gap-2">
             <span className="text-xl">🚛</span>
-            <h3 className="font-black text-green-900 uppercase text-sm italic">Registro de Despacho</h3>
+            <h3 className="font-black text-green-900 uppercase text-sm tracking-widest italic">Nuevo Despacho / Remisión</h3>
           </div>
-          <div className="text-right">
-            <p className="text-[10px] font-black text-gray-400 uppercase">Valor Total Carga</p>
-            <p className="text-2xl font-black text-green-700">{formatoPesos(totalFormulario)}</p>
+          <div className="text-right bg-green-50 p-4 rounded-2xl border border-green-100">
+            <p className="text-[10px] font-black text-green-600 uppercase italic">Valor Total Carga</p>
+            <p className="text-3xl font-black text-green-700">{formatoPesos(totalFormulario)}</p>
           </div>
         </div>
         
-        <form onSubmit={manejarEnvio} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <form onSubmit={guardarDespachoCompleto} className="space-y-8">
+          {/* CABECERA */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase px-1">N° Remisión</label>
-              <input className="w-full border-2 p-3 rounded-xl font-bold focus:border-green-500 outline-none" value={despachoForm.numero_remision} onChange={e=>setDespachoForm({...despachoForm, numero_remision: e.target.value})} required />
+              <label className="text-[10px] font-black text-gray-400 uppercase px-1 italic">N° Remisión</label>
+              <input className="w-full border-2 p-3 rounded-xl font-bold focus:border-green-500 outline-none bg-white text-lg" 
+                value={despachoForm.numero_remision} 
+                onChange={e => setDespachoForm({...despachoForm, numero_remision: e.target.value})} required />
             </div>
             <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase px-1">Fecha</label>
-              <input type="date" className="w-full border-2 p-3 rounded-xl font-bold" value={despachoForm.fecha_venta} onChange={e=>setDespachoForm({...despachoForm, fecha_venta: e.target.value})} required />
+              <label className="text-[10px] font-black text-gray-400 uppercase px-1 italic">Fecha Despacho</label>
+              <input type="date" className="w-full border-2 p-3 rounded-xl font-bold bg-white" 
+                value={despachoForm.fecha_venta} 
+                onChange={e => setDespachoForm({...despachoForm, fecha_venta: e.target.value})} required />
             </div>
             <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase px-1">Invernadero</label>
-              <select className="w-full border-2 p-3 rounded-xl bg-white font-bold" value={despachoForm.invernadero_id} onChange={e=>setDespachoForm({...despachoForm, invernadero_id: e.target.value})} required>
-                <option value="">Seleccionar...</option>
-                {listaInvernaderos.map(i => <option key={i.id} value={i.id}>{i.nombre}</option>)}
+              <label className="text-[10px] font-black text-gray-400 uppercase px-1 italic">Invernadero</label>
+              <select className="w-full border-2 p-3 rounded-xl font-bold bg-white"
+                value={despachoForm.invernadero_id}
+                onChange={e => setDespachoForm({...despachoForm, invernadero_id: e.target.value})} required>
+                <option value="">Seleccione...</option>
+                {listaInvernaderos.map(inv => <option key={inv.id} value={inv.id}>{inv.nombre}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase px-1">Cliente</label>
-              <select className="w-full border-2 p-3 rounded-xl bg-white font-bold" value={despachoForm.cliente_id} onChange={e=>setDespachoForm({...despachoForm, cliente_id: e.target.value})} required>
-                <option value="">Seleccionar...</option>
-                {listaClientes.map(c => <option key={c.id} value={c.id}>{c.nombre_completo}</option>)}
+              <label className="text-[10px] font-black text-gray-400 uppercase px-1 italic">Cliente</label>
+              <select className="w-full border-2 p-3 rounded-xl font-bold bg-white"
+                value={despachoForm.cliente_id}
+                onChange={e => setDespachoForm({...despachoForm, cliente_id: e.target.value})} required>
+                <option value="">Seleccione...</option>
+                {listaClientes.map(cli => <option key={cli.id} value={cli.id}>{cli.nombre_completo}</option>)}
               </select>
             </div>
           </div>
 
-          <div className="space-y-2">
-             {/* ENCABEZADO DE PRODUCTOS */}
-             <div className="hidden md:grid grid-cols-6 gap-2 px-3">
-                <span className="md:col-span-2 text-[9px] font-black text-gray-400 uppercase italic">Producto</span>
-                <span className="text-[9px] font-black text-gray-400 uppercase italic text-center">Cantidad</span>
-                <span className="text-[9px] font-black text-gray-400 uppercase italic text-center">Escala</span>
-                <span className="text-[9px] font-black text-green-700 uppercase italic text-center">Precio Unit.</span>
-                <span className="text-[9px] font-black text-gray-400 uppercase italic text-right">SubTotal</span>
-             </div>
+          {/* CUERPO MULTIPRODUCTO */}
+          <div className="space-y-3">
+            <div className="hidden md:grid grid-cols-12 gap-4 px-4 text-[10px] font-black text-gray-400 uppercase italic">
+              <div className="col-span-4">Producto / Variedad</div>
+              <div className="col-span-2 text-center">Cantidad</div>
+              <div className="col-span-2 text-center">Escala</div>
+              <div className="col-span-2 text-center">Precio Unit. (puntos)</div>
+              <div className="col-span-2 text-right">Subtotal</div>
+            </div>
 
             {despachoForm.filas.map((fila, index) => (
-              <div key={index} className="grid grid-cols-1 md:grid-cols-6 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200 items-end">
-                <div className="md:col-span-2">
-                  <input placeholder="Producto" className="w-full p-2 border-b bg-transparent font-bold uppercase text-xs" value={fila.producto} onChange={e=>actualizarFilaDespacho(index, 'producto', e.target.value)} required />
+              <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200 items-center">
+                <div className="col-span-4">
+                  <input placeholder="Ej: Tomate Larga Vida" 
+                    className="w-full p-2 bg-transparent font-bold text-sm outline-none border-b border-transparent focus:border-green-500" 
+                    value={fila.producto} onChange={e => actualizarFilaDespacho(index, 'producto', e.target.value)} required />
                 </div>
-                <div>
-                  <input type="number" className="w-full p-2 border-b bg-transparent font-black text-xs text-center" value={fila.cantidad} onChange={e=>actualizarFilaDespacho(index, 'cantidad', e.target.value)} required />
+                <div className="col-span-2">
+                  <input type="number" placeholder="0" 
+                    className="w-full p-2 bg-transparent font-black text-sm text-center outline-none border-b border-transparent focus:border-green-500" 
+                    value={fila.cantidad} onChange={e => actualizarFilaDespacho(index, 'cantidad', e.target.value)} required />
                 </div>
-                <div>
-                  <select className="w-full p-2 border-b bg-transparent font-bold text-xs" value={fila.escala} onChange={e=>actualizarFilaDespacho(index, 'escala', e.target.value)} required>
+                <div className="col-span-2">
+                  <select className="w-full p-2 bg-transparent font-bold text-sm outline-none border-b border-transparent focus:border-green-500" 
+                    value={fila.escala} onChange={e => actualizarFilaDespacho(index, 'escala', e.target.value)} required>
                     <option value="">...</option>
                     {opcionesEscala.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </div>
-                <div>
-                  <input 
-                    className="w-full p-2 border-b bg-transparent font-black text-green-700 text-xs text-center" 
-                    value={fila.precio ? new Intl.NumberFormat('es-CO').format(fila.precio) : ''} 
-                    onChange={e=>actualizarFilaDespacho(index, 'precio', e.target.value.replace(/\D/g, ""))} 
-                    required 
-                  />
+                {/* PRECIO CON FORMATO PESOS AL ESCRIBIR */}
+                <div className="col-span-2 relative">
+                  <input type="text" placeholder="$ 0" 
+                    className="w-full p-2 bg-transparent font-black text-green-700 text-sm text-center outline-none border-b border-transparent focus:border-green-500" 
+                    value={formatoPesos(fila.precio)} 
+                    onChange={e => actualizarFilaDespacho(index, 'precio', e.target.value.replace(/\D/g, ""))} required />
                 </div>
-                <div className="text-right">
-                  <p className="font-black text-slate-700 text-xs">{formatoPesos(parseFloat(fila.cantidad || 0) * parseFloat(fila.precio || 0))}</p>
+                <div className="col-span-2 flex justify-between items-center pl-4">
+                  <p className="font-black text-slate-800 text-sm">{formatoPesos(parseFloat(fila.cantidad || 0) * parseFloat(fila.precio || 0))}</p>
+                  {despachoForm.filas.length > 1 && (
+                    <button type="button" onClick={() => eliminarFila(index)} className="text-red-400 hover:text-red-600 ml-2">✕</button>
+                  )}
                 </div>
               </div>
             ))}
-            <button type="button" onClick={() => setDespachoForm({...despachoForm, filas: [...despachoForm.filas, {producto:'', escala:'', cantidad:'', precio:''}]})} className="text-[9px] font-black text-blue-600 uppercase">+ Agregar Fila</button>
+            
+            {/* BOTÓN AÑADIR PRODUCTO (AHORA DEBAJO DE LAS FILAS) */}
+            <div className="flex justify-start px-2">
+              <button type="button" onClick={agregarFila}
+                className="bg-blue-600 text-white text-[10px] font-black px-6 py-2 rounded-full shadow-md hover:bg-blue-700 transition-all uppercase tracking-widest italic">
+                + Añadir clase de producto
+              </button>
+            </div>
           </div>
-          <button type="submit" className="w-full bg-green-700 text-white font-black py-4 rounded-xl shadow-lg uppercase">Guardar Despacho</button>
+
+          <button type="submit" className="w-full bg-green-700 text-white font-black py-5 rounded-2xl shadow-xl uppercase tracking-[0.2em] text-sm hover:bg-green-800 transition-all active:scale-[0.98]">
+            Guardar Despacho Completo
+          </button>
         </form>
       </div>
 
-      {/* HISTORIAL SIN COLUMNA DE ABONOS */}
-      <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-400">
-        <div className="p-4 bg-gray-200 border-b-2 border-gray-400 text-center font-black text-xs uppercase italic">Estado de Cartera (Saldos Reales)</div>
+      {/* HISTORIAL CON ESCALA VISIBLE */}
+      <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-200">
+        <div className="bg-slate-800 p-4">
+          <h3 className="text-white font-black uppercase text-[10px] tracking-widest italic">Historial Reciente de Cargas</h3>
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-[11px]">
+          <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-gray-300 font-black uppercase">
-                <th className="p-4 text-center">Remisión</th>
+              <tr className="bg-slate-100 text-slate-500 text-[9px] font-black uppercase italic">
+                <th className="p-4">Fecha</th>
+                <th className="p-4">N° Remisión</th>
                 <th className="p-4">Cliente</th>
-                <th className="p-4 text-center">Estado</th>
-                <th className="p-4 text-right">Valor Venta</th>
-                <th className="p-4 text-right bg-slate-800 text-white italic">Saldo Pendiente</th>
+                <th className="p-4">Productos (Cant + Escala)</th>
+                <th className="p-4 text-right">Total Carga</th>
               </tr>
             </thead>
-            <tbody className="divide-y-2 divide-gray-400">
-              {datosDespachos?.sort((a, b) => b.id - a.id).map((d, index) => {
-                const totalVenta = parseFloat(d.total_venta || 0);
-                
-                // Cálculo interno del saldo (aunque no mostremos la columna de abonos)
-                const totalPagado = (datosPagos || [])
-                  .filter(p => String(p.despacho_id) === String(d.id))
-                  .reduce((acc, p) => acc + (parseFloat(p.monto) || 0), 0);
-
-                const saldo = totalVenta - totalPagado;
-
-                let badge = { text: 'Sin Pago', color: 'bg-red-100 text-red-700 border-red-300' };
-                if (saldo <= 0) badge = { text: 'Cancelado', color: 'bg-green-600 text-white border-green-700 shadow-md' };
-                else if (totalPagado > 0) badge = { text: 'Por Cobrar', color: 'bg-yellow-400 text-yellow-900 border-yellow-500 shadow-sm' };
-
-                return (
-                  <tr key={d.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-100'} hover:bg-green-50 transition-colors`}>
-                    <td className="p-4 text-center font-black border-l-8 border-green-700">{d.numero_remision}</td>
-                    <td className="p-4 font-black uppercase text-slate-900">{d.clientes?.nombre_completo || 'N/A'}</td>
-                    <td className="p-4 text-center">
-                      <span className={`px-2 py-1 rounded-full font-black text-[9px] uppercase border ${badge.color}`}>{badge.text}</span>
-                    </td>
-                    <td className="p-4 text-right font-bold text-slate-500">{formatoPesos(totalVenta)}</td>
-                    <td className={`p-4 text-right font-black text-[13px] ${saldo > 0 ? 'text-red-600 bg-red-50' : 'text-green-700 bg-green-50'}`}>
-                      {formatoPesos(saldo)}
-                    </td>
-                  </tr>
-                );
-              })}
+            <tbody className="divide-y divide-slate-100 text-[11px]">
+              {datosDespachos?.map((d) => (
+                <tr key={d.id} className="hover:bg-green-50/50 transition-colors font-bold">
+                  <td className="p-4 text-slate-500">{d.fecha_venta}</td>
+                  <td className="p-4 font-black text-slate-900">{d.numero_remision}</td>
+                  <td className="p-4 uppercase">{d.clientes?.nombre_completo || 'N/A'}</td>
+                  <td className="p-4">
+                    <div className="space-y-1">
+                      {d.detalle_ventas?.map((item, i) => (
+                        <div key={i} className="flex gap-2 items-center">
+                          <p className="font-black text-slate-800 uppercase leading-none">{item.descripcion}</p>
+                          <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-md text-[9px] font-black italic">
+                            {item.cantidad} {item.escala}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="p-4 text-right font-black text-green-700 text-sm">{formatoPesos(d.total_venta)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

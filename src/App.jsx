@@ -12,6 +12,7 @@ import Pagos from './pages/Pagos.jsx'
 import ConfigInv from './pages/ConfigInv.jsx'
 import ConfigCli from './pages/ConfigCli.jsx'
 import ConfigProv from './pages/ConfigProv.jsx'
+import ReporteVentas from './pages/ReporteVentas.jsx'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -19,7 +20,7 @@ function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [showConfigSubmenu, setShowConfigSubmenu] = useState(false)
   
-  // Estados de datos consolidado [cite: 103]
+  // Estados de datos consolidado
   const [datosDespachos, setDatosDespachos] = useState([]) 
   const [datosEgresos, setDatosEgresos] = useState([])
   const [datosPagos, setDatosPagos] = useState([]) 
@@ -29,7 +30,7 @@ function App() {
   const [balancesGrafica, setBalancesGrafica] = useState([])
   const [notificacion, setNotificacion] = useState({ visible: false, mensaje: '', tipo: 'exito' });
 
-  // Manejo de sesión [cite: 104]
+  // Manejo de sesión
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -42,10 +43,10 @@ function App() {
 
   const mostrarAlerta = (msj, tipo = 'exito') => {
     setNotificacion({ visible: true, mensaje: msj, tipo });
-    setTimeout(() => setNotificacion(prev => ({ ...prev, visible: false })), 3000); 
+    setTimeout(() => setNotificacion(prev => ({ ...prev, visible: false })), 3000);
   };
 
-  // ESTADOS DE FORMULARIOS RESTAURADOS [cite: 74, 75, 107]
+  // ESTADOS DE FORMULARIOS
   const [despachoForm, setDespachoForm] = useState({ 
     numero_remision: '', 
     cliente_id: '', 
@@ -111,7 +112,7 @@ function App() {
       }))
       await supabase.from('detalle_ventas').insert(detalles)
       mostrarAlerta("Despacho registrado con éxito")
-      setDespachoForm({ ...despachoForm, numero_remision: '', filas: [{ producto: '', escala: '', cantidad: '', precio: '' }] }) 
+      setDespachoForm({ ...despachoForm, numero_remision: '', filas: [{ producto: '', escala: '', cantidad: '', precio: '' }] })
       cargarTodo()
     }
   }
@@ -153,6 +154,7 @@ function App() {
           <NavItem id="despachos" label="Despachos" icon="🚛" />
           <NavItem id="pagos" label="Pagos / Caja" icon="💳" />
           <NavItem id="gastos" label="Gastos" icon="📉" />
+          <NavItem id="reporte" label="Reporte de Ventas" icon="📈" />
           
           <div className="space-y-1">
             <button onClick={() => setShowConfigSubmenu(!showConfigSubmenu)} 
@@ -180,7 +182,7 @@ function App() {
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         <header className="bg-white p-4 shadow-sm flex justify-between items-center lg:px-10">
           <button className="lg:hidden text-2xl p-2 text-green-900" onClick={() => setIsMenuOpen(true)}>☰</button>
-          <h1 className="text-xl font-black text-green-900 tracking-tight uppercase">{tab.replace('config-', 'Configuración: ')}</h1>
+          <h1 className="text-xl font-black text-green-900 tracking-tight uppercase">{tab.replace('config-', 'Configuración: ').replace('reporte', 'Reporte de Ventas')}</h1>
           <div className="w-10"></div>
         </header>
 
@@ -232,6 +234,15 @@ function App() {
               listaInvernaderos={listaInvernaderos} listaProveedores={listaProveedores} 
               mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} 
               supabase={supabase} datosEgresos={datosEgresos} 
+            />
+          )}
+
+          {tab === 'reporte' && (
+            <ReporteVentas 
+              listaInvernaderos={listaInvernaderos}
+              datosDespachos={datosDespachos}
+              datosEgresos={datosEgresos}
+              datosPagos={datosPagos}
             />
           )}
 

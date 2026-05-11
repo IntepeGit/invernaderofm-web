@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 
 export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, listaProveedores, mostrarAlerta, cargarTodo, supabase, datosEgresos }) {
   const categorias = ["Mano de obra", "Insumo Agricola", "Flete", "Mto (Mantenimiento)", "S.Publicos", "Arriendos", "Quincena", "Otros"];
-  const unidades = ["Global", "Kilo", "Bulto", "Litro", "Jornal", "Unidad", "Hora", "Otra", "Caja", "Garrafa", "Galon"];
+  const unidades = ["Canastilla", "Kilo", "Bulto", "Litro", "Jornal", "Unidad", "Hora", "Otra", "Caja", "Garrafa", "Galon"];
 
   // Cálculo automático del monto total (Cantidad x Precio Unitario)
   useEffect(() => {
