@@ -187,25 +187,103 @@ function App() {
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 md:p-10 space-y-10">
-          {tab === 'dashboard' && (
-            <div className="bg-white p-6 rounded-3xl shadow-sm text-center">
-              <h3 className="font-black text-gray-400 text-[10px] mb-8 uppercase tracking-widest">Balance Consolidado por Invernadero</h3>
-              <div className="h-80 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={balancesGrafica}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" fontSize={10} axisLine={false} tickLine={false} />
-                    <YAxis fontSize={10} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ borderRadius: '15px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                    <Legend iconType="circle" />
-                    <Bar dataKey="Ingresos" fill="#3b82f6" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="Gastos" fill="#ef4444" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="Utilidad" fill="#10b981" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+        
+{tab === 'dashboard' && (
+  <div className="space-y-8 animate-in fade-in duration-500">
+    {/* SECCIÓN DE KPIs GLOBALES */}
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="bg-white p-6 rounded-3xl shadow-sm border-l-8 border-blue-500 transition-transform hover:scale-105">
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Ingresos Totales</p>
+        <p className="text-2xl font-black text-slate-800">
+          {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(
+            datosDespachos.reduce((acc, d) => acc + (d.total_venta || 0), 0)
           )}
+        </p>
+      </div>
+
+      <div className="bg-white p-6 rounded-3xl shadow-sm border-l-8 border-red-500 transition-transform hover:scale-105">
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Gastos Totales</p>
+        <p className="text-2xl font-black text-slate-800">
+          {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(
+            datosEgresos.reduce((acc, e) => acc + (e.monto || 0), 0)
+          )}
+        </p>
+      </div>
+
+      <div className="bg-white p-6 rounded-3xl shadow-sm border-l-8 border-green-500 transition-transform hover:scale-105">
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Utilidad Neta</p>
+        <p className="text-2xl font-black text-green-600">
+          {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(
+            datosDespachos.reduce((acc, d) => acc + (d.total_venta || 0), 0) - 
+            datosEgresos.reduce((acc, e) => acc + (e.monto || 0), 0)
+          )}
+        </p>
+      </div>
+
+      <div className="bg-slate-800 p-6 rounded-3xl shadow-lg transition-transform hover:scale-105">
+        <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest italic">Eficiencia (Margen)</p>
+        <p className="text-3xl font-black text-white">
+          {(() => {
+            const v = datosDespachos.reduce((acc, d) => acc + (d.total_venta || 0), 0);
+            const g = datosEgresos.reduce((acc, e) => acc + (e.monto || 0), 0);
+            return v > 0 ? (((v - g) / v) * 100).toFixed(1) : 0;
+          })()}%
+        </p>
+      </div>
+    </div>
+
+    {/* GRÁFICO PRINCIPAL */}
+    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100">
+      <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
+        <div>
+          <h3 className="font-black text-slate-800 text-lg uppercase italic tracking-tighter">Balance Consolidado</h3>
+          <p className="text-[10px] font-bold text-slate-400 uppercase">Rendimiento comparativo por invernadero</p>
+        </div>
+        <div className="flex gap-4">
+          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500"></div><span className="text-[9px] font-black uppercase text-slate-500">Ingresos</span></div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500"></div><span className="text-[9px] font-black uppercase text-slate-500">Gastos</span></div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-500"></div><span className="text-[9px] font-black uppercase text-slate-500">Utilidad</span></div>
+        </div>
+      </div>
+
+      <div className="h-96 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={balancesGrafica} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+            <XAxis dataKey="name" fontSize={11} fontWeight="900" axisLine={false} tickLine={false} tick={{fill: '#64748b'}} />
+            <YAxis fontSize={10} axisLine={false} tickLine={false} tick={{fill: '#94a3b8'}} tickFormatter={(value) => `$${value/1000000}M`} />
+            <Tooltip 
+              cursor={{fill: '#f8fafc'}}
+              contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '15px' }} 
+            />
+            <Bar dataKey="Ingresos" fill="#3b82f6" radius={[10, 10, 0, 0]} barSize={40} />
+            <Bar dataKey="Gastos" fill="#ef4444" radius={[10, 10, 0, 0]} barSize={40} />
+            <Bar dataKey="Utilidad" fill="#10b981" radius={[10, 10, 0, 0]} barSize={40} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+
+    {/* SECCIÓN DE CARTERA PENDIENTE */}
+    <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 flex flex-col md:flex-row items-center justify-between gap-6">
+      <div className="flex items-center gap-4">
+        <div className="bg-amber-100 p-4 rounded-2xl text-2xl">💰</div>
+        <div>
+          <h4 className="font-black text-slate-800 uppercase italic text-sm">Cartera Total Pendiente</h4>
+          <p className="text-[10px] font-bold text-slate-400 uppercase">Dinero por recaudar de despachos realizados</p>
+        </div>
+      </div>
+      <div className="text-right">
+        <p className="text-4xl font-black text-amber-600 tracking-tighter">
+          {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(
+            datosDespachos.reduce((acc, d) => acc + (d.total_venta || 0), 0) - 
+            datosPagos.reduce((acc, p) => acc + (p.monto || 0), 0)
+          )}
+        </p>
+      </div>
+    </div>
+  </div>
+)}
 
           {tab === 'despachos' && (
             <Despachos 
