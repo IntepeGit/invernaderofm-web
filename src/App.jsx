@@ -6,9 +6,9 @@ import 'jspdf-autotable'
 
 // Importaciones de componentes
 import Login from './pages/Login.jsx'
-import Despachos from './pages/Despachos.jsx' // Nombre actualizado [cite: 30]
+import Despachos from './pages/Despachos.jsx' 
 import Gastos from './pages/Gastos.jsx'
-import Pagos from './pages/Pagos.jsx' // Nuevo componente [cite: 30]
+import Pagos from './pages/Pagos.jsx' 
 import ConfigInv from './pages/ConfigInv.jsx'
 import ConfigCli from './pages/ConfigCli.jsx'
 import ConfigProv from './pages/ConfigProv.jsx'
@@ -19,17 +19,17 @@ function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [showConfigSubmenu, setShowConfigSubmenu] = useState(false)
   
-  // Estados de datos
-  const [datosDespachos, setDatosDespachos] = useState([]) // Antes datosVentas [cite: 31]
+  // Estados de datos consolidado [cite: 103]
+  const [datosDespachos, setDatosDespachos] = useState([]) 
   const [datosEgresos, setDatosEgresos] = useState([])
-  const [datosPagos, setDatosPagos] = useState([]) // Nuevo estado para pagos [cite: 31]
+  const [datosPagos, setDatosPagos] = useState([]) 
   const [listaInvernaderos, setListaInvernaderos] = useState([])
   const [listaClientes, setListaClientes] = useState([])
   const [listaProveedores, setListaProveedores] = useState([])
   const [balancesGrafica, setBalancesGrafica] = useState([])
   const [notificacion, setNotificacion] = useState({ visible: false, mensaje: '', tipo: 'exito' });
 
-  // Manejo de sesión [cite: 32]
+  // Manejo de sesión [cite: 104]
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -42,10 +42,10 @@ function App() {
 
   const mostrarAlerta = (msj, tipo = 'exito') => {
     setNotificacion({ visible: true, mensaje: msj, tipo });
-    setTimeout(() => setNotificacion(prev => ({ ...prev, visible: false })), 3000); // [cite: 34]
+    setTimeout(() => setNotificacion(prev => ({ ...prev, visible: false })), 3000); 
   };
 
-  // Estados de Formularios [cite: 35]
+  // ESTADOS DE FORMULARIOS RESTAURADOS [cite: 74, 75, 107]
   const [despachoForm, setDespachoForm] = useState({ 
     numero_remision: '', 
     cliente_id: '', 
@@ -53,23 +53,21 @@ function App() {
     fecha_venta: new Date().toISOString().split('T')[0], 
     filas: [{ producto: '', escala: '', cantidad: '', precio: '' }] 
   })
-  
   const [gastoForm, setGastoForm] = useState({ descripcion: '', categoria: 'Mano de obra', monto: '', invernadero_id: '', proveedor_id: '', numero_comprobante: '', nota: '', fecha: new Date().toISOString().split('T')[0] })
+  const [invForm, setInvForm] = useState({ nombre: '', cultivo: '', variedad: '', largo: '', ancho: '', siembra: '', cosecha: '', estado: 'Activo', descripcion: '' })
+  const [cliForm, setCliForm] = useState({ nombre: '', nit: '', tel: '', dir: '', ciudad: '', nota: '', email: '' })
+  const [provForm, setProvForm] = useState({ nombre: '', nit: '', tel: '', dir: '', ciudad: '', nota: '' })
 
   async function cargarTodo() {
     if (!session) return;
-    
-    // Consultas a Supabase [cite: 37, 38]
     const { data: v } = await supabase.from('ventas').select('*, clientes(*), invernaderos(*), detalle_ventas(*)')
     const { data: e } = await supabase.from('egresos').select('*, invernaderos(*), proveedores(*)')
     const { data: i } = await supabase.from('invernaderos').select('*')
     const { data: c } = await supabase.from('clientes').select('*')
     const { data: p } = await supabase.from('proveedores').select('*')
-    
-    // Nueva consulta para Pagos
     const { data: pagos } = await supabase.from('pagos').select('*, clientes(nombre_completo), ventas(numero_remision)')
 
-    setDatosDespachos(v || []); // [cite: 39]
+    setDatosDespachos(v || []);
     setDatosEgresos(e || []);
     setDatosPagos(pagos || []);
     setListaInvernaderos(i || []);
@@ -84,7 +82,7 @@ function App() {
     setBalancesGrafica(resumen || [])
   }
 
-  useEffect(() => { if (session) cargarTodo() }, [session]); // [cite: 40]
+  useEffect(() => { if (session) cargarTodo() }, [session]);
 
   const actualizarFilaDespacho = (index, campo, valor) => {
     const nuevasFilas = [...despachoForm.filas]
@@ -95,12 +93,11 @@ function App() {
   const guardarDespachoCompleto = async (e) => {
     e.preventDefault()
     const totalVenta = despachoForm.filas.reduce((acc, f) => acc + (parseFloat(f.cantidad || 0) * parseFloat(f.precio || 0)), 0)
-    
     const { data: venta } = await supabase.from('ventas').insert([{
       numero_remision: despachoForm.numero_remision,
       cliente_id: despachoForm.cliente_id,
       invernadero_id: despachoForm.invernadero_id,
-      total_venta: totalVenta, // [cite: 41]
+      total_venta: totalVenta, 
       fecha_venta: despachoForm.fecha_venta
     }]).select().single()
 
@@ -114,7 +111,7 @@ function App() {
       }))
       await supabase.from('detalle_ventas').insert(detalles)
       mostrarAlerta("Despacho registrado con éxito")
-      setDespachoForm({ ...despachoForm, numero_remision: '', filas: [{ producto: '', escala: '', cantidad: '', precio: '' }] }) // [cite: 42]
+      setDespachoForm({ ...despachoForm, numero_remision: '', filas: [{ producto: '', escala: '', cantidad: '', precio: '' }] }) 
       cargarTodo()
     }
   }
@@ -137,7 +134,7 @@ function App() {
   }
 
   const NavItem = ({ id, label, icon }) => (
-    <button onClick={() => { setTab(id); setIsMenuOpen(false); setShowConfigSubmenu(false); }} // [cite: 43]
+    <button onClick={() => { setTab(id); setIsMenuOpen(false); setShowConfigSubmenu(false); }} 
       className={`flex items-center gap-3 w-full p-4 rounded-xl transition ${tab === id ? 'bg-green-700 text-white' : 'text-green-100 hover:bg-green-800'}`}>
       <span className="text-xl">{icon}</span> <span className="font-bold text-sm capitalize">{label}</span>
     </button>
@@ -158,7 +155,8 @@ function App() {
           <NavItem id="gastos" label="Gastos" icon="📉" />
           
           <div className="space-y-1">
-            <button onClick={() => setShowConfigSubmenu(!showConfigSubmenu)} className={`flex items-center justify-between w-full p-4 rounded-xl transition ${tab.startsWith('config-') ? 'bg-green-800 text-white' : 'text-green-100 hover:bg-green-800'}`}>
+            <button onClick={() => setShowConfigSubmenu(!showConfigSubmenu)} 
+              className={`flex items-center justify-between w-full p-4 rounded-xl transition ${tab.startsWith('config-') ? 'bg-green-800 text-white' : 'text-green-100 hover:bg-green-800'}`}>
               <div className="flex items-center gap-3">
                 <span className="text-xl">⚙️</span>
                 <span className="font-bold text-sm">Configuración</span>
@@ -213,6 +211,8 @@ function App() {
               listaClientes={listaClientes} listaInvernaderos={listaInvernaderos} 
               actualizarFilaDespacho={actualizarFilaDespacho} guardarDespachoCompleto={guardarDespachoCompleto} 
               datosDespachos={datosDespachos} 
+              datosPagos={datosPagos} 
+              mostrarAlerta={mostrarAlerta} 
             />
           )}
 
@@ -222,6 +222,7 @@ function App() {
               datosDespachos={datosDespachos} 
               guardarPago={guardarPago} 
               datosPagos={datosPagos} 
+              mostrarAlerta={mostrarAlerta} 
             />
           )}
 
