@@ -92,15 +92,34 @@ function App() {
   }
 
   const guardarDespachoCompleto = async (e) => {
-    e.preventDefault()
-    const totalVenta = despachoForm.filas.reduce((acc, f) => acc + (parseFloat(f.cantidad || 0) * parseFloat(f.precio || 0)), 0)
-    const { data: venta } = await supabase.from('ventas').insert([{
+  e.preventDefault();
+  
+  try {
+    // --- ESTE ES EL BLOQUE CLAVE PARA LA ACTUALIZACIÓN ---
+    // Si existe id_editando, significa que es una corrección.
+    // Borramos la versión vieja (cabecera y detalles) para que la nueva ocupe su lugar.
+    if (despachoForm.id_editando) {
+      // 1. Borrar detalles antiguos
+      await supabase.from('detalle_ventas').delete().eq('venta_id', despachoForm.id_editando);
+      // 2. Borrar cabecera antigua
+      await supabase.from('ventas').delete().eq('id', despachoForm.id_editando);
+    }
+    // ----------------------------------------------------
+
+    // Ahora procedemos a guardar como si fuera nuevo, 
+    // pero al haber borrado el anterior, el efecto es de "Actualización".
+    const totalVenta = despachoForm.filas.reduce((acc, f) => 
+      acc + (parseFloat(f.cantidad || 0) * parseFloat(f.precio || 0)), 0);
+
+    const { data: venta, error: vError } = await supabase.from('ventas').insert([{
       numero_remision: despachoForm.numero_remision,
       cliente_id: despachoForm.cliente_id,
       invernadero_id: despachoForm.invernadero_id,
       total_venta: totalVenta, 
       fecha_venta: despachoForm.fecha_venta
-    }]).select().single()
+    }]).select().single();
+
+    if (vError) throw vError;
 
     if (venta) {
       const detalles = despachoForm.filas.map(f => ({
@@ -109,13 +128,61 @@ function App() {
         escala: f.escala,
         cantidad: parseFloat(f.cantidad),
         precio_unitario: parseFloat(f.precio)
-      }))
-      await supabase.from('detalle_ventas').insert(detalles)
-      mostrarAlerta("Despacho registrado con éxito")
-      setDespachoForm({ ...despachoForm, numero_remision: '', filas: [{ producto: '', escala: '', cantidad: '', precio: '' }] })
-      cargarTodo()
+      }));
+
+      const { error: dError } = await supabase.from('detalle_ventas').insert(detalles);
+      if (dError) throw dError;
+
+      mostrarAlerta(despachoForm.id_editando ? "Remisión actualizada correctamente" : "Despacho registrado");
+      
+      // Limpiamos el formulario y reseteamos id_editando a null
+      setDespachoForm({ 
+        id_editando: null, 
+        numero_remision: '', 
+        cliente_id: '', 
+        invernadero_id: '', 
+        fecha_venta: new Date().toISOString().split('T')[0], 
+        filas: [{ producto: '', escala: '', cantidad: '', precio: '' }] 
+      });
+      
+      cargarTodo(); // Recargamos la lista para ver los cambios
+    }
+  } catch (error) {
+    mostrarAlerta("Error al procesar: " + error.message, "error");
+  }
+};
+  // Función para ELIMINAR
+const eliminarDespacho = async (id) => {
+  if (window.confirm("¿Está seguro de eliminar esta remisión?")) {
+    // 1. Borramos los detalles primero (por seguridad de la base de datos)
+    await supabase.from('detalle_ventas').delete().eq('venta_id', id);
+    // 2. Borramos la venta principal
+    const { error } = await supabase.from('ventas').delete().eq('id', id);
+    
+    if (!error) {
+      mostrarAlerta("Remisión eliminada correctamente");
+      cargarTodo(); // Refresca la tabla
     }
   }
+};
+
+// Función para EDITAR (Carga los datos arriba para corregir)
+const prepararEdicion = (despacho) => {
+  setDespachoForm({
+    id_editando: despacho.id, // Guardamos el ID para saber que vamos a actualizar este
+    numero_remision: despacho.numero_remision,
+    cliente_id: despacho.cliente_id,
+    invernadero_id: despacho.invernadero_id,
+    fecha_venta: despacho.fecha_venta,
+    filas: despacho.detalle_ventas.map(d => ({
+      producto: d.descripcion,
+      escala: d.escala,
+      cantidad: d.cantidad,
+      precio: d.precio_unitario
+    }))
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' }); // Sube al formulario automáticamente
+};
 
   const guardarPago = async (pagoData) => {
     const { error } = await supabase.from('pagos').insert([{
@@ -293,6 +360,19 @@ function App() {
               datosDespachos={datosDespachos} 
               datosPagos={datosPagos} 
               mostrarAlerta={mostrarAlerta} 
+
+              despachoForm={despachoForm} 
+              setDespachoForm={setDespachoForm}
+              listaClientes={listaClientes} 
+              listaInvernaderos={listaInvernaderos}
+              actualizarFilaDespacho={actualizarFilaDespacho} 
+              guardarDespachoCompleto={guardarDespachoCompleto}
+              datosDespachos={datosDespachos}
+              // ESTAS DOS SON LAS QUE FALTAN CONECTAR:
+              eliminarDespacho={eliminarDespacho} 
+              prepararEdicion={prepararEdicion}
+
+
             />
           )}
 
