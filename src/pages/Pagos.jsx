@@ -1,13 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 
-export default function Pagos({ listaClientes, datosDespachos, guardarPago, datosPagos, mostrarAlerta }) {
-  const [pagoForm, setPagoForm] = useState({
-    cliente_id: '',
-    despacho_id: '',
-    fecha_pago: new Date().toISOString().split('T')[0],
-    monto: 0,
-    referencia: ''
-  });
+export default function Pagos({ 
+  pagoForm, setPagoForm, listaClientes, datosDespachos, 
+  datosPagos, mostrarAlerta, cargarTodo, 
+  guardarPago, prepararEdicionPago, eliminarPago 
+}) {
 
   const formatoPesos = (valor) => new Intl.NumberFormat('es-CO', { 
     style: 'currency', 
@@ -15,10 +12,10 @@ export default function Pagos({ listaClientes, datosDespachos, guardarPago, dato
     minimumFractionDigits: 0 
   }).format(valor || 0);
 
-  // 1. Obtener la remisión seleccionada actualmente con sus productos
+  // 1. Obtener la remisión seleccionada actualmente
   const remisionSeleccionada = datosDespachos?.find(r => r.id?.toString() === pagoForm.despacho_id?.toString());
 
-  // 2. Obtener abonos asociados
+  // 2. Obtener abonos asociados a la remisión actual
   const historialAbonos = datosPagos
     ?.filter(p => p.despacho_id?.toString() === pagoForm.despacho_id?.toString())
     .sort((a, b) => new Date(a.fecha_pago) - new Date(b.fecha_pago));
@@ -30,31 +27,26 @@ export default function Pagos({ listaClientes, datosDespachos, guardarPago, dato
     d.cliente_id?.toString() === pagoForm.cliente_id?.toString()
   ) || [];
 
-  const manejarEnvio = (e) => {
-    e.preventDefault();
-    const montoAbono = parseFloat(pagoForm.monto);
-    if (montoAbono <= 0) return mostrarAlerta("El valor debe ser mayor a cero", "error");
-    if (montoAbono > saldoActual) return mostrarAlerta("EL VALOR SUPERA EL SALDO PENDIENTE", "error");
-
-    guardarPago(pagoForm);
-    setPagoForm({ ...pagoForm, monto: 0, referencia: '' });
-  };
-
   return (
     <div className="space-y-6 pb-20">
       {/* FORMULARIO DE REGISTRO */}
       <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-blue-700">
         <h3 className="font-black text-blue-900 uppercase text-sm mb-6 italic">💳 Registro de Pagos</h3>
         
-        <form onSubmit={manejarEnvio} className="space-y-4">
+        <form onSubmit={guardarPago} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Cliente</label>
-              <select className="w-full border-2 p-3 rounded-xl font-bold bg-white"
+              <select 
+                className="w-full border-2 p-3 rounded-xl font-bold bg-white"
                 value={pagoForm.cliente_id}
-                onChange={(e) => setPagoForm({...pagoForm, cliente_id: e.target.value, despacho_id: ''})} required>
+                onChange={(e) => setPagoForm({...pagoForm, cliente_id: e.target.value, despacho_id: ''})} 
+                required
+              >
                 <option value="">Seleccione Cliente...</option>
-                {listaClientes.map(c => <option key={c.id} value={c.id}>{c.nombre_completo}</option>)}
+                {listaClientes.map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre_completo}</option>
+                ))}
               </select>
             </div>
 
@@ -84,9 +76,13 @@ export default function Pagos({ listaClientes, datosDespachos, guardarPago, dato
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-blue-700 uppercase italic px-1">Valor del Nuevo Abono</label>
-                  <input type="text" className="w-full p-4 bg-white rounded-xl font-black text-2xl text-blue-900 border-2 border-blue-200 outline-none focus:border-blue-500"
-                    value={formatoPesos(pagoForm.monto)}
-                    onChange={(e) => setPagoForm({...pagoForm, monto: e.target.value.replace(/\D/g, "")})} required />
+                  <input 
+                  type="text" 
+                  className="w-full p-4 bg-white rounded-xl font-black text-2xl text-blue-900 border-2 border-blue-200 outline-none focus:border-blue-500"
+                  value={pagoForm.monto} // <--- DEBE SER ASÍ, sin formatoPesos()
+                  onChange={(e) => setPagoForm({...pagoForm, monto: e.target.value.replace(/\D/g, "")})} 
+                  required 
+                />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-slate-500 uppercase italic px-1">Saldo Pendiente Actual</label>
@@ -106,8 +102,13 @@ export default function Pagos({ listaClientes, datosDespachos, guardarPago, dato
                     onChange={(e) => setPagoForm({...pagoForm, referencia: e.target.value})}
                     placeholder="Ej: Transferencia Bancolombia / Efectivo" />
                 </div>
-                <button type="submit" className="bg-blue-700 text-white font-black py-4 rounded-xl shadow-lg uppercase hover:bg-blue-800 transition-all active:scale-95">
-                  Registrar Abono
+                <button 
+                  type="submit" 
+                  className={`w-full p-4 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg ${
+                    pagoForm.id_editando ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+                  } text-white`}
+                >
+                  {pagoForm.id_editando ? '💾 Actualizar Abono' : '💰 Registrar Abono'}
                 </button>
               </div>
             </div>
@@ -125,14 +126,12 @@ export default function Pagos({ listaClientes, datosDespachos, guardarPago, dato
 
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-b pb-6">
-              {/* Info Cliente */}
               <div>
                 <p className="text-[10px] font-black text-gray-400 uppercase italic">Cliente</p>
                 <p className="font-black text-xl text-slate-800 uppercase leading-tight">{remisionSeleccionada.clientes?.nombre_completo}</p>
                 <p className="text-xs font-bold text-slate-500 mt-1">Fecha: {remisionSeleccionada.fecha_venta}</p>
               </div>
 
-              {/* PRODUCTOS TRAÍDOS AUTOMÁTICAMENTE */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                 <p className="text-[10px] font-black text-blue-600 uppercase mb-3 tracking-widest italic">Contenido de la Remisión</p>
                 <div className="space-y-2">
@@ -171,7 +170,27 @@ export default function Pagos({ listaClientes, datosDespachos, guardarPago, dato
                         </div>
                       </div>
                     </div>
-                    <p className="font-black text-blue-700 text-lg">+{formatoPesos(abono.monto)}</p>
+                    
+                    <div className="flex items-center gap-6">
+                      <p className="font-black text-blue-700 text-lg">+{formatoPesos(abono.monto)}</p>
+                      {/* BOTONES DE ACCIÓN */}
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => prepararEdicionPago(abono)}
+                          className="p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 shadow-md transition-all active:scale-90"
+                          title="Editar"
+                        >
+                          ✏️
+                        </button>
+                        <button 
+                          onClick={() => eliminarPago(abono.id)}
+                          className="p-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-md transition-all active:scale-90"
+                          title="Eliminar"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ))
               ) : (

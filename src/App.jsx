@@ -54,11 +54,119 @@ function App() {
     fecha_venta: new Date().toISOString().split('T')[0], 
     filas: [{ producto: '', escala: '', cantidad: '', precio: '' }] 
   })
-  const [gastoForm, setGastoForm] = useState({ descripcion: '', categoria: 'Mano de obra', monto: '', invernadero_id: '', proveedor_id: '', numero_comprobante: '', nota: '', fecha: new Date().toISOString().split('T')[0] })
+  //const [gastoForm, setGastoForm] = useState({ descripcion: '', categoria: 'Mano de obra', monto: '', invernadero_id: '', proveedor_id: '', numero_comprobante: '', nota: '', fecha: new Date().toISOString().split('T')[0] })
+  const [gastoForm, setGastoForm] = useState({ id_editando: null, descripcion: '', categoria: 'Mano de obra', monto: '', invernadero_id: '', proveedor_id: '', numero_comprobante: '', nota: '', fecha: new Date().toISOString().split('T')[0] })
   const [invForm, setInvForm] = useState({ nombre: '', cultivo: '', variedad: '', largo: '', ancho: '', siembra: '', cosecha: '', estado: 'Activo', descripcion: '' })
   const [cliForm, setCliForm] = useState({ nombre: '', nit: '', tel: '', dir: '', ciudad: '', nota: '', email: '' })
   const [provForm, setProvForm] = useState({ nombre: '', nit: '', tel: '', dir: '', ciudad: '', nota: '' })
+  const [pagoForm, setPagoForm] = useState({ id_editando: null, cliente_id: '', venta_id: '', monto: '', metodo_pago: 'Efectivo', fecha_pago: new Date().toISOString().split('T')[0], nota: '' })
+  
+// PEGAR AQUÍ (Línea 118 aprox.)
+const eliminarGasto = async (id) => {
+  if (window.confirm("¿Está seguro de eliminar este gasto?")) {
+    const { error } = await supabase.from('egresos').delete().eq('id', id);
+    if (!error) { mostrarAlerta("Gasto eliminado"); cargarTodo(); }
+  }
+};
 
+const prepararEdicionGasto = (g) => {
+  setGastoForm({
+    id_editando: g.id,
+    descripcion: g.descripcion,
+    categoria: g.categoria,
+    monto: g.monto,
+    invernadero_id: g.invernadero_id,
+    proveedor_id: g.proveedor_id,
+    numero_comprobante: g.numero_comprobante || '',
+    nota: g.nota || '',
+    fecha: g.fecha_gasto || g.fecha
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+const guardarGasto = async (e) => {
+  e.preventDefault();
+  const payload = {
+    descripcion: gastoForm.descripcion,
+    categoria: gastoForm.categoria,
+    monto: parseFloat(gastoForm.monto),
+    invernadero_id: gastoForm.invernadero_id,
+    proveedor_id: gastoForm.proveedor_id,
+    numero_comprobante: gastoForm.numero_comprobante,
+    nota: gastoForm.nota,
+    fecha_gasto: gastoForm.fecha
+  };
+  if (gastoForm.id_editando) {
+    await supabase.from('egresos').update(payload).eq('id', gastoForm.id_editando);
+  } else {
+    await supabase.from('egresos').insert([payload]);
+  }
+  mostrarAlerta(gastoForm.id_editando ? "Gasto actualizado" : "Gasto guardado");
+  setGastoForm({ id_editando: null, descripcion: '', categoria: 'Mano de obra', monto: '', invernadero_id: '', proveedor_id: '', numero_comprobante: '', nota: '', fecha: new Date().toISOString().split('T')[0] });
+  cargarTodo();
+};
+
+const eliminarPago = async (id) => {
+  if (window.confirm("¿Está seguro de eliminar este pago?")) {
+    const { error } = await supabase.from('pagos').delete().eq('id', id);
+    if (!error) { mostrarAlerta("Pago eliminado"); cargarTodo(); }
+  }
+};
+
+const prepararEdicionPago = (pago) => {
+  setPagoForm({
+    id_editando: pago.id,
+    cliente_id: pago.cliente_id,
+    despacho_id: pago.despacho_id, // <--- Asegúrate que diga despacho_id
+    monto: pago.monto,
+    fecha_pago: pago.fecha_pago,
+    referencia: pago.referencia || '' // <--- Asegúrate que diga referencia
+  });
+  // Esto sube la pantalla suavemente al formulario
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+const guardarPago = async (e) => {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const payload = {
+    cliente_id: pagoForm.cliente_id,
+    despacho_id: pagoForm.despacho_id, 
+    monto: parseFloat(pagoForm.monto),
+    fecha_pago: pagoForm.fecha_pago,
+    referencia: pagoForm.referencia 
+  };
+
+  try {
+    if (pagoForm.id_editando) {
+      // MODO EDICIÓN: Actualiza el abono existente
+      await supabase.from('pagos').update(payload).eq('id', pagoForm.id_editando);
+    } else {
+      // MODO NUEVO: Inserta un nuevo abono
+      await supabase.from('pagos').insert([payload]);
+    }
+
+    mostrarAlerta(pagoForm.id_editando ? "Abono actualizado correctamente" : "Abono guardado");
+
+    // REESTABLECIMIENTO INTELIGENTE:
+    // Usamos el operador spread (...pagoForm) para mantener el cliente y la remisión seleccionados.
+    // Esto evita que la ficha técnica se cierre.
+    setPagoForm({ 
+      ...pagoForm,           
+      id_editando: null,     // El botón volverá a ser verde ("Registrar")
+      monto: '',             // Limpia el monto para un nuevo abono
+      referencia: ''         // Limpia la nota
+    });
+
+    cargarTodo();
+  } catch (error) {
+    mostrarAlerta("Error: " + error.message, "error");
+  }
+}; // <-- Esta llave cierra la función guardarPago
+
+
+// DESPUÉS DE ESTO DEBE SEGUIR: async function cargarTodo() { ...
+  
   async function cargarTodo() {
     if (!session) return;
     const { data: v } = await supabase.from('ventas').select('*, clientes(*), invernaderos(*), detalle_ventas(*)')
@@ -95,15 +203,13 @@ function App() {
   e.preventDefault();
   
   try {
-    // --- ESTE ES EL BLOQUE CLAVE PARA LA ACTUALIZACIÓN ---
-    // Si existe id_editando, significa que es una corrección.
-    // Borramos la versión vieja (cabecera y detalles) para que la nueva ocupe su lugar.
-    if (despachoForm.id_editando) {
-      // 1. Borrar detalles antiguos
-      await supabase.from('detalle_ventas').delete().eq('venta_id', despachoForm.id_editando);
-      // 2. Borrar cabecera antigua
-      await supabase.from('ventas').delete().eq('id', despachoForm.id_editando);
+    if (pagoForm.id_editando) {
+      await supabase.from('pagos').update(payload).eq('id', pagoForm.id_editando);
+    } else {
+      await supabase.from('pagos').insert([payload]);
     }
+    
+    mostrarAlerta(pagoForm.id_editando ? "Abono actualizado" : "Abono registrado");
     // ----------------------------------------------------
 
     // Ahora procedemos a guardar como si fuera nuevo, 
@@ -151,6 +257,11 @@ function App() {
     mostrarAlerta("Error al procesar: " + error.message, "error");
   }
 };
+
+//=======
+
+
+
   // Función para ELIMINAR
 const eliminarDespacho = async (id) => {
   if (window.confirm("¿Está seguro de eliminar esta remisión?")) {
@@ -184,22 +295,7 @@ const prepararEdicion = (despacho) => {
   window.scrollTo({ top: 0, behavior: 'smooth' }); // Sube al formulario automáticamente
 };
 
-  const guardarPago = async (pagoData) => {
-    const { error } = await supabase.from('pagos').insert([{
-      cliente_id: pagoData.cliente_id,
-      despacho_id: pagoData.despacho_id,
-      fecha_pago: pagoData.fecha_pago,
-      monto: parseFloat(pagoData.monto),
-      referencia: pagoData.referencia
-    }])
-
-    if (!error) {
-      mostrarAlerta("Pago registrado correctamente");
-      cargarTodo();
-    } else {
-      mostrarAlerta("Error al registrar pago", "error");
-    }
-  }
+  
 
   const NavItem = ({ id, label, icon }) => (
     <button onClick={() => { setTab(id); setIsMenuOpen(false); setShowConfigSubmenu(false); }} 
@@ -383,17 +479,26 @@ const prepararEdicion = (despacho) => {
               guardarPago={guardarPago} 
               datosPagos={datosPagos} 
               mostrarAlerta={mostrarAlerta} 
+              pagoForm={pagoForm}
+              setPagoForm={setPagoForm}
+              cargarTodo={cargarTodo} 
+              prepararEdicionPago={prepararEdicionPago}
+              eliminarPago={eliminarPago}
             />
           )}
-
-          {tab === 'gastos' && (
-            <Gastos 
-              gastoForm={gastoForm} setGastoForm={setGastoForm} 
-              listaInvernaderos={listaInvernaderos} listaProveedores={listaProveedores} 
-              mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} 
-              supabase={supabase} datosEgresos={datosEgresos} 
-            />
-          )}
+                    
+      {tab === 'gastos' && (
+        <Gastos 
+          gastoForm={gastoForm} setGastoForm={setGastoForm} 
+          listaInvernaderos={listaInvernaderos} listaProveedores={listaProveedores} 
+          mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} 
+          supabase={supabase} datosEgresos={datosEgresos}
+    // AÑADIR ESTAS 3 LÍNEAS ABAJO:
+          guardarGasto={guardarGasto}
+          prepararEdicionGasto={prepararEdicionGasto}
+          eliminarGasto={eliminarGasto}
+  />
+)}  
 
           {tab === 'reporte' && (
             <ReporteVentas 

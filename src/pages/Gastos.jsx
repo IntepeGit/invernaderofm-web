@@ -1,6 +1,9 @@
 import { useEffect } from 'react';
 
-export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, listaProveedores, mostrarAlerta, cargarTodo, supabase, datosEgresos }) {
+//export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, listaProveedores, mostrarAlerta, cargarTodo, supabase, datosEgresos }) {
+// Busque esta línea al inicio del archivo Gastos.jsx y asegúrese de que incluya estas funciones:
+export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, listaProveedores, mostrarAlerta, cargarTodo, datosEgresos, guardarGasto, prepararEdicionGasto, eliminarGasto }) {
+
   const categorias = ["Mano de obra", "Insumo Agricola", "Flete", "Mto (Mantenimiento)", "S.Publicos", "Arriendos", "Quincena", "Otros"];
   const unidades = ["Canastilla", "Kilo", "Bulto", "Litro", "Jornal", "Unidad", "Hora", "Otra", "Caja", "Garrafa", "Galon"];
 
@@ -63,12 +66,16 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-400 uppercase px-1">Fecha</label>
-            <input type="date" className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-500 font-bold" 
-              value={gastoForm.fecha} onChange={e => setGastoForm({...gastoForm, fecha: e.target.value})} />
-          </div>
+        <form onSubmit={guardarGasto} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+  <div className="space-y-1">
+    <label className="text-[10px] font-black text-gray-400 uppercase px-1">Fecha</label>
+    <input 
+      type="date" 
+      className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-500 font-bold" 
+      value={gastoForm.fecha} 
+      onChange={e => setGastoForm({...gastoForm, fecha: e.target.value})} 
+    />
+  </div>
 
           <div className="space-y-1">
             <label className="text-[10px] font-black text-gray-400 uppercase px-1">Invernadero</label>
@@ -158,41 +165,79 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[11px] border-collapse">
             <thead>
-              <tr className="bg-gray-300 text-slate-800 uppercase font-black">
-                <th className="p-4 border-b-2 border-gray-400">Fecha / Factura</th>
-                <th className="p-4 border-b-2 border-gray-400">Invernadero</th>
-                <th className="p-4 border-b-2 border-gray-400">Concepto / Nota</th>
-                <th className="p-4 border-b-2 border-gray-400 text-center">Detalle</th>
-                <th className="p-4 border-b-2 border-gray-400 text-right">Monto</th>
-              </tr>
-            </thead>
+            <tr className="bg-gray-300 text-slate-800 uppercase font-black text-[11px] italic">
+            <th className="p-4 border-b-2 border-gray-400">Fecha / Factura</th>
+            <th className="p-4 border-b-2 border-gray-400">Invernadero</th>
+            <th className="p-4 border-b-2 border-gray-400">Concepto / Nota</th>
+            <th className="p-4 border-b-2 border-gray-400 text-center">Detalle</th>
+           <th className="p-4 border-b-2 border-gray-400 text-right">Monto</th>
+    {/* Nueva columna para los botones de Editar y Borrar */}
+    <th className="p-4 border-b-2 border-gray-400 text-right">ACCIONES</th>
+  </tr>
+</thead>
             <tbody className="divide-y-2 divide-gray-400">
-              {datosEgresos?.sort((a, b) => b.id - a.id).map((g, index) => (
-                <tr key={g.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-200'} hover:bg-yellow-100 transition-colors`}>
-                  <td className="p-4 border-l-8 border-red-700">
-                    <div className="font-black text-slate-900">{g.fecha_gasto}</div>
-                    <div className="text-[10px] text-red-700 font-black">{g.numero_comprobante ? `DOC: ${g.numero_comprobante}` : 'S/N'}</div>
-                  </td>
-                  <td className="p-4">
-                    <span className="bg-slate-700 text-white px-2 py-1 rounded text-[9px] font-black uppercase shadow-sm">
-                      {g.invernaderos?.nombre || 'Gral'}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <p className="font-black text-slate-900 uppercase">{g.descripcion}</p>
-                    {g.nota && <p className="text-[9px] text-slate-500 italic">"{g.nota}"</p>}
-                    <p className="text-[8px] text-slate-400 font-bold uppercase">{g.categoria}</p>
-                  </td>
-                  <td className="p-4 text-center">
-                    <div className="font-black text-slate-800">{g.cantidad} {g.unidad_medida}</div>
-                    <div className="text-[9px] text-slate-400 font-bold">${(g.precio_unitario || 0).toLocaleString()} c/u</div>
-                  </td>
-                  <td className="p-4 text-right font-black text-red-700 text-[13px]">
-                    ${new Intl.NumberFormat('es-CO').format(g.monto || 0)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+  {datosEgresos?.sort((a, b) => b.id - a.id).map((g, index) => (
+    <tr 
+      key={g.id} 
+      // Efecto cebra fuerte: gris marcado y borde lateral rojo como en tu diseño original
+      className={`
+        ${index % 2 === 0 ? 'bg-white' : 'bg-gray-200'} 
+        hover:bg-yellow-100 transition-colors border-l-8 border-red-700
+      `}
+    >
+      <td className="p-4">
+        <div className="font-black text-slate-900">{g.fecha_gasto}</div>
+        <div className="text-[10px] text-red-700 font-black">
+          {g.numero_comprobante ? `DOC: ${g.numero_comprobante}` : 'S/N'}
+        </div>
+      </td>
+      <td className="p-4">
+        <span className="bg-slate-700 text-white px-2 py-1 rounded text-[9px] font-black uppercase shadow-sm">
+          {g.invernaderos?.nombre || 'Gral'}
+        </span>
+      </td>
+      <td className="p-4">
+        <p className="font-black text-slate-900 uppercase leading-tight">{g.descripcion}</p>
+        {g.nota && <p className="text-[9px] text-slate-500 italic">"{g.nota}"</p>}
+        <p className="text-[8px] text-slate-400 font-bold uppercase">{g.categoria}</p>
+      </td>
+      <td className="p-4 text-center">
+        <div className="font-black text-slate-800">{g.cantidad} {g.unidad_medida}</div>
+        <div className="text-[9px] text-slate-400 font-bold">
+          ${(g.precio_unitario || 0).toLocaleString()} c/u
+        </div>
+      </td>
+      <td className="p-4 text-right font-black text-red-700 text-[13px]">
+        ${new Intl.NumberFormat('es-CO').format(g.monto || 0)}
+      </td>
+
+      {/* --- NUEVA COLUMNA DE ACCIONES SIEMPRE VISIBLES --- */}
+      <td className="p-4 text-right">
+        <div className="flex gap-3 justify-end">
+          <button 
+            onClick={() => prepararEdicionGasto(g)}
+            className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all shadow-md active:scale-95"
+            //className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all shadow-md"
+            title="Editar Gasto"
+          >
+            ✏️
+          </button>
+          <button 
+            onClick={() => eliminarGasto(g.id)}
+            //className="text-red-600 hover:text-red-900"
+            className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all shadow-md active:scale-90"
+            //className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all shadow-md active:scale-95"
+            title="Eliminar Gasto"
+          >
+            🗑️
+          </button>
+
+          
+        </div>
+      </td>
+    </tr>
+  ))}
+</tbody>
           </table>
         </div>
       </div>
