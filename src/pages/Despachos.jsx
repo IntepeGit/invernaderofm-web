@@ -9,8 +9,9 @@ export default function Despachos({
   guardarDespachoCompleto, 
   datosDespachos,
   prepararEdicion, // Función para cargar datos en el formulario
+  imprimirPDF, // <--- AÑADIR ESTA
   eliminarDespacho // Función para borrar de la DB
-}) {
+  }) {
   
   const opcionesEscala = ["Kilo", "Bulto", "Caja", "Unidad", "Gramos", "Canastilla"];
 
@@ -55,18 +56,31 @@ export default function Despachos({
           </div>
         </div>
         
-        <form onSubmit={guardarDespachoCompleto} className="space-y-8">
-          {/* SECCIÓN 1: DATOS CABECERA */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div>
-              <label className="text-[10px] font-black text-gray-400 uppercase px-1 italic">N° Remisión</label>
-              <input 
-                className="w-full border-2 p-3 rounded-xl font-bold focus:border-green-500 outline-none bg-white text-lg" 
-                value={despachoForm.numero_remision} 
-                onChange={e => setDespachoForm({...despachoForm, numero_remision: e.target.value})} 
-                required 
+         <form onSubmit={guardarDespachoCompleto} className="p-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            
+            {/* CAMPO NÚMERO DE REMISIÓN CON VALIDACIÓN VISUAL INMEDIATA */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-black text-gray-400 uppercase px-1 italic">Número de Remisión</label>
+              
+              <input
+                type="text"
+                placeholder="N° Remisión"
+                className={`p-3 border-2 rounded-xl font-black outline-none transition-all ${
+                  despachoForm.errorDuplicado 
+                    ? 'border-red-500 bg-red-50 text-red-600' 
+                    : 'border-blue-100 bg-blue-50 text-blue-600'
+                }`}
+                value={despachoForm.numero_remision}
+                onChange={(e) => setDespachoForm({...despachoForm, numero_remision: e.target.value})}
               />
+              {despachoForm.errorDuplicado && (
+                <span className="text-[11px] font-black text-red-600 animate-pulse ml-2">
+                  ⚠️ ESTE NÚMERO YA EXISTE EN EL HISTORIAL
+                </span>
+              )}
             </div>
+
 
             <div>
               <label className="text-[10px] font-black text-gray-400 uppercase px-1 italic">Fecha Despacho</label>
@@ -189,7 +203,7 @@ export default function Despachos({
           <button 
             type="submit" 
             className="w-full bg-green-700 text-white font-black py-5 rounded-2xl shadow-xl uppercase tracking-[0.2em] text-sm hover:bg-green-800 transition-all active:scale-[0.98]"
-          >
+                    >
             {despachoForm.id_editando ? 'Actualizar Remisión Completa' : 'Guardar Despacho Completo'}
           </button>
         </form>
@@ -242,12 +256,13 @@ export default function Despachos({
       {/* ACCIONES SIEMPRE VISIBLES Y CON MÁS COLOR */}
       <td className="p-4 text-right">
         <div className="flex gap-3 justify-end">
-          <button 
-            onClick={() => prepararEdicion(d)}
-            className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all shadow-md"
-            title="Editar Remisión"
+           <button 
+            onClick={() => imprimirPDF(d)} // Llama a la función de impresión
+            className="p-2 bg-slate-800 text-white rounded-lg hover:bg-black transition-all shadow-md flex items-center gap-1"
+            title="Imprimir PDF"
           >
-            ✏️
+            <span className="text-sm">🖨️</span>
+            <span className="text-[10px] font-bold">PDF</span>
           </button>
           <button 
             onClick={() => eliminarDespacho(d.id)}

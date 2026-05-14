@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import jsPDF from 'jspdf'
-import 'jspdf-autotable'
+import autoTable from 'jspdf-autotable' // Importación explícita sin punto y coma
 
 // Importaciones de componentes
 import Login from './pages/Login.jsx'
@@ -165,12 +165,48 @@ const guardarPago = async (e) => {
   }
 }; // <-- Esta llave cierra la función guardarPago
 
+const prepararEdicionDespacho = async (venta) => {
+  try {
+    // 1. Buscamos los productos detallados de esa remisión
+    const { data: detalles, error } = await supabase
+      .from('detalle_ventas')
+      .select('*')
+      .eq('venta_id', venta.id);
+
+    if (error) throw error;
+
+    // 2. Llenamos el estado del formulario con la info de la DB
+    setDespachoForm({
+      id_editando: venta.id,
+      numero_remision: venta.numero_remision,
+      cliente_id: venta.cliente_id,
+      invernadero_id: venta.invernadero_id,
+      fecha_venta: venta.fecha_venta,
+      // Convertimos los detalles de la DB al formato que entiende tu tabla de filas
+      filas: detalles.map(d => ({
+        producto: d.descripcion,
+        escala: d.escala,
+        cantidad: d.cantidad,
+        precio: d.precio_unitario
+      }))
+    });
+    
+    // 3. Opcional: mover el scroll al inicio para ver el formulario
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    
+  } catch (error) {
+    mostrarAlerta("Error al cargar la remisión: " + error.message, "error");
+  }
+};
+
+
 
 // DESPUÉS DE ESTO DEBE SEGUIR: async function cargarTodo() { ...
   
   async function cargarTodo() {
     if (!session) return;
-    const { data: v } = await supabase.from('ventas').select('*, clientes(*), invernaderos(*), detalle_ventas(*)')
+    //const { data: v } = await supabase.from('ventas').select('*, clientes(*), invernaderos(*), detalle_ventas(*)')
+    const { data: v, error: ev } = await supabase.from('ventas').select('*, clientes(*), invernaderos(*), detalle_ventas(*)').order('fecha_venta', { ascending: false });
     const { data: e } = await supabase.from('egresos').select('*, invernaderos(*), proveedores(*)')
     const { data: i } = await supabase.from('invernaderos').select('*')
     const { data: c } = await supabase.from('clientes').select('*')
@@ -207,7 +243,58 @@ const guardarPago = async (e) => {
     setBalancesGrafica(resumen || [])
   }
 
+  // Validar duplicado en tiempo real mientras el usuario escribe
+useEffect(() => {
+  const validarRemisionEnVivo = async () => {
+    // Solo validamos si hay un número escrito y NO estamos editando
+    if (despachoForm.numero_remision && !despachoForm.id_editando && tab === 'despachos') {
+      const { data, error } = await supabase
+        .from('ventas')
+        .select('numero_remision')
+        .eq('numero_remision', despachoForm.numero_remision.trim())
+        .maybeSingle();
+
+      if (data) {
+        // Guardamos el estado de error en el formulario (necesitas añadir este campo al estado inicial)
+        setDespachoForm(prev => ({ ...prev, errorDuplicado: true }));
+      } else {
+        setDespachoForm(prev => ({ ...prev, errorDuplicado: false }));
+      }
+    } else {
+      setDespachoForm(prev => ({ ...prev, errorDuplicado: false }));
+    }
+  };
+
+  // Usamos un pequeño delay (debounce) para no saturar la base de datos mientras escribes
+  const timeoutId = setTimeout(validarRemisionEnVivo, 500);
+  return () => clearTimeout(timeoutId);
+}, [despachoForm.numero_remision, tab]);
+
   useEffect(() => { if (session) cargarTodo() }, [session]);
+
+  // --- LÓGICA DE CONSECUTIVO AUTOMÁTICO ---
+  // --- LÓGICA DE CONSECUTIVO AUTOMÁTICO ---
+  useEffect(() => {
+    // Solo sugerimos número si estamos en la pestaña de despachos, NO estamos editando y hay datos
+    if (tab === 'despachos' && !despachoForm.id_editando && datosDespachos.length > 0) {
+      
+      // 1. Extraemos todos los números de remisión actuales y los convertimos a números enteros
+      const numeros = datosDespachos
+        .map(d => parseInt(d.numero_remision))
+        .filter(n => !isNaN(n)); // Ignoramos si hay textos o campos vacíos
+      
+      // 2. Buscamos el mayor número registrado
+      const ultimoNumero = numeros.length > 0 ? Math.max(...numeros) : 0;
+      
+      // 3. Si el campo del formulario está vacío, le sugerimos el siguiente (último + 1)
+      if (!despachoForm.numero_remision) {
+        setDespachoForm(prev => ({ 
+          ...prev, 
+          numero_remision: (ultimoNumero + 1).toString() 
+        }));
+      }
+    }
+  }, [tab, datosDespachos, despachoForm.id_editando]);
 
   const actualizarFilaDespacho = (index, campo, valor) => {
     const nuevasFilas = [...despachoForm.filas]
@@ -215,67 +302,86 @@ const guardarPago = async (e) => {
     setDespachoForm({ ...despachoForm, filas: nuevasFilas })
   }
 
-  const guardarDespachoCompleto = async (e) => {
-  e.preventDefault();
+ const guardarDespachoCompleto = async (e) => {
+  if (e && e.preventDefault) e.preventDefault();
   
   try {
-    if (pagoForm.id_editando) {
-      await supabase.from('pagos').update(payload).eq('id', pagoForm.id_editando);
-    } else {
-      await supabase.from('pagos').insert([payload]);
-    }
-    
-    mostrarAlerta(pagoForm.id_editando ? "Abono actualizado" : "Abono registrado");
-    // ----------------------------------------------------
+    const numRemision = despachoForm.numero_remision.trim();
 
-    // Ahora procedemos a guardar como si fuera nuevo, 
-    // pero al haber borrado el anterior, el efecto es de "Actualización".
-    const totalVenta = despachoForm.filas.reduce((acc, f) => 
+    // --- 1. BLOQUEO DE DUPLICADOS (Solo para registros nuevos) ---
+    if (!despachoForm.id_editando) {
+      // Buscamos si ese número YA está en la tabla de ventas de Supabase
+      const { data: existe, error: errorCheck } = await supabase
+        .from('ventas')
+        .select('numero_remision')
+        .eq('numero_remision', numRemision);
+
+      // Si la base de datos devuelve algo, es porque ya se usó ese número
+      if (existe && existe.length > 0) {
+        mostrarAlerta(`⚠️ ERROR: La remisión N° ${numRemision} ya existe en el historial.`, "error");
+        return; // IMPORTANTE: Este 'return' detiene todo y evita que se guarde.
+      }
+    }
+
+    // --- 2. CÁLCULO DEL TOTAL ---
+    const totalVentaCalculado = despachoForm.filas.reduce((acc, f) => 
       acc + (parseFloat(f.cantidad || 0) * parseFloat(f.precio || 0)), 0);
 
-    const { data: venta, error: vError } = await supabase.from('ventas').insert([{
-      numero_remision: despachoForm.numero_remision,
+    const datosVenta = {
+      numero_remision: numRemision,
       cliente_id: despachoForm.cliente_id,
       invernadero_id: despachoForm.invernadero_id,
-      total_venta: totalVenta, 
+      total_venta: totalVentaCalculado, 
       fecha_venta: despachoForm.fecha_venta
-    }]).select().single();
+    };
 
-    if (vError) throw vError;
+    let ventaId = despachoForm.id_editando;
 
-    if (venta) {
-      const detalles = despachoForm.filas.map(f => ({
-        venta_id: venta.id,
-        descripcion: f.producto,
-        escala: f.escala,
-        cantidad: parseFloat(f.cantidad),
-        precio_unitario: parseFloat(f.precio)
-      }));
-
-      const { error: dError } = await supabase.from('detalle_ventas').insert(detalles);
-      if (dError) throw dError;
-
-      mostrarAlerta(despachoForm.id_editando ? "Remisión actualizada correctamente" : "Despacho registrado");
-      
-      // Limpiamos el formulario y reseteamos id_editando a null
-      setDespachoForm({ 
-        id_editando: null, 
-        numero_remision: '', 
-        cliente_id: '', 
-        invernadero_id: '', 
-        fecha_venta: new Date().toISOString().split('T')[0], 
-        filas: [{ producto: '', escala: '', cantidad: '', precio: '' }] 
-      });
-      
-      cargarTodo(); // Recargamos la lista para ver los cambios
+    // --- 3. PROCESO DE GUARDADO (Cabecera) ---
+    if (ventaId) {
+      // Modo Edición
+      const { error: vError } = await supabase.from('ventas').update(datosVenta).eq('id', ventaId);
+      if (vError) throw vError;
+      await supabase.from('detalle_ventas').delete().eq('venta_id', ventaId);
+    } else {
+      // Modo Nuevo
+      const { data: nuevaVenta, error: vError } = await supabase.from('ventas')
+        .insert([datosVenta]).select().single();
+      if (vError) throw vError;
+      ventaId = nuevaVenta.id;
     }
+
+    // --- 4. INSERTAR PRODUCTOS ---
+    const detalles = despachoForm.filas.map(f => ({
+      venta_id: ventaId,
+      descripcion: f.producto,
+      escala: f.escala,
+      cantidad: parseFloat(f.cantidad || 0),
+      precio_unitario: parseFloat(f.precio || 0)
+    }));
+
+    const { error: dError } = await supabase.from('detalle_ventas').insert(detalles);
+    if (dError) throw dError;
+
+    mostrarAlerta(despachoForm.id_editando ? "Remisión actualizada" : "Despacho guardado con éxito");
+    
+    // --- 5. LIMPIEZA Y RESET ---
+    setDespachoForm({ 
+      id_editando: null, 
+      numero_remision: '', // Esto dispara el consecutivo automático
+      cliente_id: '', 
+      invernadero_id: '', 
+      fecha_venta: new Date().toISOString().split('T')[0], 
+      filas: [{ producto: '', escala: '', cantidad: '', precio: '' }] 
+    });
+    
+    await cargarTodo();
+
   } catch (error) {
-    mostrarAlerta("Error al procesar: " + error.message, "error");
+    mostrarAlerta("Error técnico: " + error.message, "error");
   }
 };
-
 //=======
-
 
 
   // Función para ELIMINAR
@@ -292,6 +398,126 @@ const eliminarDespacho = async (id) => {
     }
   }
 };
+
+// --- FUNCIÓN DE IMPRESIÓN (PEGAR AQUÍ) ---
+const imprimirPDF = (remision) => {
+    try {
+      const detalles = remision.detalle_ventas || [];
+      if (detalles.length === 0) {
+        mostrarAlerta("Esta remisión no tiene productos registrados", "error");
+        return;
+      }
+
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: [105, 148] // Tamaño A6
+      });
+
+      // --- 1. MARCO EXTERNO VERDE ---
+      doc.setDrawColor(0, 80, 0); 
+      doc.setLineWidth(0.8);
+      doc.rect(4, 4, 97, 140); 
+
+      // --- 2. LOGO ---
+      const logoUrl = '/Logopapel.png';
+      doc.addImage(logoUrl, 'PNG', 42.5, 7, 20, 20); 
+
+      // --- 3. N° REMISIÓN ---
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(0);
+      doc.text("N° Remisión:", 10, 12);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${remision.numero_remision || 'N/A'}`, 32, 12);
+
+      // --- 4. TÍTULO ---
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(0, 80, 0);
+      doc.text("REMISIÓN DE VENTA", 52.5, 30, { align: "center" });
+
+      // --- 5. BLOQUE DE DATOS CON CEBRA VERDE FUERTE Y CENTRADO ---
+      doc.setTextColor(0);
+      doc.setFontSize(8);
+      
+      const xCol1 = 10, xVal1 = 32, xCol2 = 52, xVal2 = 68;
+      
+      // Definimos la altura de cada fila y el inicio
+      const altoFila = 5;
+      const yBase = 32.5;
+
+      // Dibujar Fondos Cebra (Fila 1 y 3) con un verde más vivo
+      doc.setFillColor(180, 220, 180); 
+      doc.rect(7, yBase, 91, altoFila, 'F'); // Fondo Fila 1
+      doc.rect(7, yBase + (altoFila * 2), 91, altoFila, 'F'); // Fondo Fila 3
+
+      // Marco y líneas de la cuadrícula
+      doc.setDrawColor(0, 80, 0);
+      doc.setLineWidth(0.2);
+      doc.rect(7, yBase, 91, altoFila * 4); // Cuadro total de datos (4 filas)
+      doc.line(7, yBase + altoFila, 98, yBase + altoFila); // Línea horiz 1
+      doc.line(7, yBase + (altoFila * 2), 98, yBase + (altoFila * 2)); // Línea horiz 2
+      doc.line(7, yBase + (altoFila * 3), 98, yBase + (altoFila * 3)); // Línea horiz 3
+      doc.line(50, yBase, 50, yBase + (altoFila * 4)); // Línea vertical central
+
+      // Función auxiliar para centrar texto verticalmente en la fila
+      // Sumamos 3.5mm a la base de la fila para que el texto de 8pt quede centrado
+      const yOffset = 3.5; 
+
+      // Fila 1: Fecha y Ciudad
+      doc.setFont("helvetica", "bold"); doc.text("Fecha:", xCol1, yBase + yOffset);
+      doc.setFont("helvetica", "normal"); doc.text(`${remision.fecha_venta || ''}`, xVal1, yBase + yOffset);
+      doc.setFont("helvetica", "bold"); doc.text("Ciudad:", xCol2, yBase + yOffset);
+      doc.setFont("helvetica", "normal"); doc.text(`${remision.clientes?.ciudad || 'N/A'}`, xVal2, yBase + yOffset);
+
+      // Fila 2: Invernadero y Celular
+      doc.setFont("helvetica", "bold"); doc.text("Invernadero:", xCol1, yBase + altoFila + yOffset);
+      doc.setFont("helvetica", "normal"); doc.text(`${remision.invernaderos?.nombre || 'N/A'}`, xVal1, yBase + altoFila + yOffset);
+      doc.setFont("helvetica", "bold"); doc.text("Celular:", xCol2, yBase + altoFila + yOffset);
+      doc.setFont("helvetica", "normal"); doc.text(`${remision.clientes?.telefono || 'N/A'}`, xVal2, yBase + altoFila + yOffset);
+
+      // Fila 3: Cliente y Correo
+      doc.setFont("helvetica", "bold"); doc.text("Cliente:", xCol1, yBase + (altoFila * 2) + yOffset);
+      doc.setFont("helvetica", "normal"); doc.text(`${remision.clientes?.nombre_completo || 'N/A'}`, xVal1, yBase + (altoFila * 2) + yOffset);
+      doc.setFont("helvetica", "bold"); doc.text("Correo:", xCol2, yBase + (altoFila * 2) + yOffset);
+      doc.setFontSize(5.5); // Correo pequeño para que no se salga
+      doc.setFont("helvetica", "normal"); doc.text(`${remision.clientes?.email || 'N/A'}`, xVal2, yBase + (altoFila * 2) + yOffset);
+
+      // Fila 4: NIT/CC
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold"); doc.text("NIT/CC:", xCol1, yBase + (altoFila * 3) + yOffset);
+      doc.setFont("helvetica", "normal"); doc.text(`${remision.clientes?.nit || 'N/A'}`, xVal1, yBase + (altoFila * 3) + yOffset);
+      
+      // --- 6. TABLA DE PRODUCTOS ---
+      autoTable(doc, {
+        startY: 56,
+        head: [["Cant", "Producto", "Precio", "Total"]],
+        body: detalles.map(item => [
+          item.cantidad || 0,
+          item.descripcion || 'Sin descripción',
+          new Intl.NumberFormat('es-CO').format(item.precio_unitario || 0),
+          new Intl.NumberFormat('es-CO').format((item.cantidad || 0) * (item.precio_unitario || 0))
+        ]),
+        theme: 'grid',
+        styles: { fontSize: 7, cellPadding: 1.2, fontStyle: 'bold' },
+        headStyles: { fillColor: [0, 80, 0], textColor: [255, 255, 255] }
+      });
+
+      // --- 7. TOTAL ---
+      const finalY = doc.lastAutoTable.finalY + 8;
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text(`TOTAL A PAGAR: ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(remision.total_venta || 0)}`, 95, finalY, { align: "right" });
+
+      doc.save(`Remision_${remision.numero_remision}.pdf`);
+
+    } catch (err) {
+      console.error("Error al generar PDF:", err);
+    }
+  };
+//=====HASTA AQUI PDF================
+
 
 // Función para EDITAR (Carga los datos arriba para corregir)
 const prepararEdicion = (despacho) => {
@@ -311,7 +537,9 @@ const prepararEdicion = (despacho) => {
   window.scrollTo({ top: 0, behavior: 'smooth' }); // Sube al formulario automáticamente
 };
 
-  
+  // --- NUEVA FUNCIÓN DE IMPRESIÓN ---
+// --- COPIAR ESTA FUNCIÓN DENTRO DE App.jsx ---
+
 
   const NavItem = ({ id, label, icon }) => (
     <button onClick={() => { setTab(id); setIsMenuOpen(false); setShowConfigSubmenu(false); }} 
@@ -374,29 +602,28 @@ const prepararEdicion = (despacho) => {
               datosEgresos={datosEgresos}
               datosPagos={datosPagos}
               balancesGrafica={balancesGrafica}
+               
             />
           )}
 
           {tab === 'despachos' && (
             <Despachos 
-              despachoForm={despachoForm} setDespachoForm={setDespachoForm} 
-              listaClientes={listaClientes} listaInvernaderos={listaInvernaderos} 
-              actualizarFilaDespacho={actualizarFilaDespacho} guardarDespachoCompleto={guardarDespachoCompleto} 
+              despachoForm={despachoForm}
+              setDespachoForm={setDespachoForm} 
+              listaClientes={listaClientes}
+              listaInvernaderos={listaInvernaderos} 
+              actualizarFilaDespacho={actualizarFilaDespacho}
+              guardarDespachoCompleto={guardarDespachoCompleto} 
               datosDespachos={datosDespachos} 
               datosPagos={datosPagos} 
               mostrarAlerta={mostrarAlerta} 
-
-              despachoForm={despachoForm} 
-              setDespachoForm={setDespachoForm}
-              listaClientes={listaClientes} 
-              listaInvernaderos={listaInvernaderos}
-              actualizarFilaDespacho={actualizarFilaDespacho} 
-              guardarDespachoCompleto={guardarDespachoCompleto}
-              datosDespachos={datosDespachos}
+              guardarDespacho={guardarDespachoCompleto}
+              
               // ESTAS DOS SON LAS QUE FALTAN CONECTAR:
               eliminarDespacho={eliminarDespacho} 
               prepararEdicion={prepararEdicion}
-
+              prepararEdicion={prepararEdicionDespacho}
+              imprimirPDF={imprimirPDF}
 
             />
           )}
@@ -418,14 +645,19 @@ const prepararEdicion = (despacho) => {
                     
       {tab === 'gastos' && (
         <Gastos 
-          gastoForm={gastoForm} setGastoForm={setGastoForm} 
-          listaInvernaderos={listaInvernaderos} listaProveedores={listaProveedores} 
-          mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} 
-          supabase={supabase} datosEgresos={datosEgresos}
+          gastoForm={gastoForm}
+          setGastoForm={setGastoForm} 
+          listaInvernaderos={listaInvernaderos}
+          listaProveedores={listaProveedores} 
+          mostrarAlerta={mostrarAlerta}
+          cargarTodo={cargarTodo} 
+          supabase={supabase}
+          datosEgresos={datosEgresos}
     // AÑADIR ESTAS 3 LÍNEAS ABAJO:
           guardarGasto={guardarGasto}
           prepararEdicionGasto={prepararEdicionGasto}
           eliminarGasto={eliminarGasto}
+          
   />
 )}  
 
