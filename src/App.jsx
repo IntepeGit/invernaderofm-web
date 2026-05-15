@@ -56,7 +56,8 @@ function App() {
     filas: [{ producto: '', escala: '', cantidad: '', precio: '' }] 
   })
   //const [gastoForm, setGastoForm] = useState({ descripcion: '', categoria: 'Mano de obra', monto: '', invernadero_id: '', proveedor_id: '', numero_comprobante: '', nota: '', fecha: new Date().toISOString().split('T')[0] })
-  const [gastoForm, setGastoForm] = useState({ id_editando: null, descripcion: '', categoria: 'Mano de obra', monto: '', invernadero_id: '', proveedor_id: '', numero_comprobante: '', nota: '', fecha: new Date().toISOString().split('T')[0] })
+  //const [gastoForm, setGastoForm] = useState({ id_editando: null, descripcion: '', categoria: 'Mano de obra', monto: '', invernadero_id: '', proveedor_id: '', numero_comprobante: '', nota: '', fecha: new Date().toISOString().split('T')[0] })
+  const [gastoForm, setGastoForm] = useState({ id_editando: null, descripcion: '', categoria: 'Mano de obra', monto: '', invernadero_id: '', proveedor_id: '', numero_comprobante: '', nota: '', fecha: new Date().toISOString().split('T')[0], cantidad: '', precio_unitario: '', unidad_medida: 'Unidad' })
   const [invForm, setInvForm] = useState({ nombre: '', cultivo: '', variedad: '', largo: '', ancho: '', siembra: '', cosecha: '', estado: 'Activo', descripcion: '' })
   const [cliForm, setCliForm] = useState({ nombre: '', nit: '', tel: '', dir: '', ciudad: '', nota: '', email: '' })
   const [provForm, setProvForm] = useState({ nombre: '', nit: '', tel: '', dir: '', ciudad: '', nota: '' })
@@ -207,6 +208,7 @@ const prepararEdicionDespacho = async (venta) => {
     if (!session) return;
     //const { data: v } = await supabase.from('ventas').select('*, clientes(*), invernaderos(*), detalle_ventas(*)')
     const { data: v, error: ev } = await supabase.from('ventas').select('*, clientes(*), invernaderos(*), detalle_ventas(*)').order('fecha_venta', { ascending: false });
+    const { data: egresosData, error: egresosError } = await supabase.from('egresos').select('*, invernaderos(*), proveedores(*)').order('fecha_gasto', { ascending: false });
     const { data: e } = await supabase.from('egresos').select('*, invernaderos(*), proveedores(*)')
     const { data: i } = await supabase.from('invernaderos').select('*')
     const { data: c } = await supabase.from('clientes').select('*')
@@ -399,7 +401,7 @@ const eliminarDespacho = async (id) => {
   }
 };
 
-// --- FUNCIÓN DE IMPRESIÓN (PEGAR AQUÍ) ---
+// --- FUNCIÓN DE IMPRESIÓN DE DESPACHOS  ---
 const imprimirPDF = (remision) => {
     try {
       const detalles = remision.detalle_ventas || [];
@@ -516,8 +518,147 @@ const imprimirPDF = (remision) => {
       console.error("Error al generar PDF:", err);
     }
   };
-//=====HASTA AQUI PDF================
+//=====HASTA AQUI PDF DE DESPACHOS================
 
+// --- DESDE AQUI FUNCIÓN DE IMPRESIÓN DE GASTOS  ---
+const imprimirGastoPDF = (gasto) => {
+  try {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: [105, 148] // Tamaño A6
+    });
+
+    // --- 1. MARCO EXTERNO VERDE ---
+    doc.setDrawColor(0, 80, 0);
+    doc.setLineWidth(0.8);
+    doc.rect(4, 4, 97, 140);
+
+    // --- 2. LOGO ---
+    const logoUrl = '/Logopapel.png';
+    doc.addImage(logoUrl, 'PNG', 42.5, 7, 20, 20);
+
+    // --- 3. N° COMPROBANTE (Arriba a la izquierda) ---
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(0);
+    doc.text("Comp. N°:", 10, 12);
+    doc.setFont("helvetica", "normal");
+    doc.text(`${gasto.numero_comprobante || 'S/N'}`, 28, 12);
+
+    // --- 4. TÍTULO ---
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(0, 80, 0);
+    doc.text("COMPROBANTE DE GASTO", 52.5, 30, { align: "center" });
+
+    // --- 5. BLOQUE DE DATOS ORGANIZADO ---
+    doc.setTextColor(0);
+    doc.setFontSize(8);
+    
+    const xCol1 = 10, xVal1 = 32, xCol2 = 54, xVal2 = 72;
+    const altoFila = 5.5; 
+    const yBase = 35;
+    const yOffset = 3.8; 
+
+    // Fondos Cebra (Filas 1, 3, 5 y 7 si fuera necesario)
+    doc.setFillColor(230, 245, 230);
+    doc.rect(7, yBase, 91, altoFila, 'F');             // Fila 1 (Fecha/Cat)
+    doc.rect(7, yBase + (altoFila * 2), 91, altoFila, 'F'); // Fila 3 (Prov/NIT)
+    doc.rect(7, yBase + (altoFila * 4), 91, altoFila, 'F'); // Fila 5 (Uni/Cant)
+    doc.rect(7, yBase + (altoFila * 6), 91, altoFila, 'F'); // Fila 7 (Concepto)
+
+    // Marco de la cuadrícula (8 filas para que quepa todo)
+    doc.setDrawColor(0, 80, 0);
+    doc.setLineWidth(0.2);
+    doc.rect(7, yBase, 91, altoFila * 8);
+    
+    for(let i=1; i<=7; i++) {
+      doc.line(7, yBase + (altoFila * i), 98, yBase + (altoFila * i));
+    }
+
+    // Líneas divisorias verticales
+    doc.line(52, yBase, 52, yBase + (altoFila * 2)); // Fila 1 y 2
+    doc.line(52, yBase + (altoFila * 2), 52, yBase + (altoFila * 3)); // Fila 3 (Prov/NIT)
+    doc.line(52, yBase + (altoFila * 3), 52, yBase + (altoFila * 4)); // Fila 4 (Tel/Ciu)
+    doc.line(52, yBase + (altoFila * 4), 52, yBase + (altoFila * 5)); // Fila 5 (Uni/Cant)
+
+    // --- LLENADO DE DATOS ---
+    
+    // Fila 1: Fecha y Categoría
+    doc.setFont("helvetica", "bold"); doc.text("Fecha:", xCol1, yBase + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${gasto.fecha_gasto || ''}`, xVal1, yBase + yOffset);
+    doc.setFont("helvetica", "bold"); doc.text("Categoría:", xCol2, yBase + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${gasto.categoria || 'N/A'}`, xVal2, yBase + yOffset);
+
+    // Fila 2: Invernadero
+    doc.setFont("helvetica", "bold"); doc.text("Invernadero:", xCol1, yBase + altoFila + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${gasto.invernaderos?.nombre || 'General'}`, xVal1, yBase + altoFila + yOffset);
+
+    // Fila 3: Proveedor y NIT/Cédula
+    doc.setFont("helvetica", "bold"); doc.text("Proveedor:", xCol1, yBase + (altoFila * 2) + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${gasto.proveedores?.nombre || 'Particular'}`, xVal1, yBase + (altoFila * 2) + yOffset);
+    doc.setFont("helvetica", "bold"); doc.text("NIT/CC:", xCol2, yBase + (altoFila * 2) + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${gasto.proveedores?.nit || 'N/A'}`, xVal2, yBase + (altoFila * 2) + yOffset);
+
+    // Fila 4: Teléfono y Ciudad
+    doc.setFont("helvetica", "bold"); doc.text("Teléfono:", xCol1, yBase + (altoFila * 3) + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${gasto.proveedores?.telefono || 'N/A'}`, xVal1, yBase + (altoFila * 3) + yOffset);
+    doc.setFont("helvetica", "bold"); doc.text("Ciudad:", xCol2, yBase + (altoFila * 3) + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${gasto.proveedores?.ciudad || 'N/A'}`, xVal2, yBase + (altoFila * 3) + yOffset);
+
+    // Fila 5: Unidad y Cantidad
+    doc.setFont("helvetica", "bold"); doc.text("Unidad:", xCol1, yBase + (altoFila * 4) + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${gasto.unidad_medida || 'N/A'}`, xVal1, yBase + (altoFila * 4) + yOffset);
+    doc.setFont("helvetica", "bold"); doc.text("Cantidad:", xCol2, yBase + (altoFila * 4) + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${String(gasto.cantidad || '0')}`, xVal2, yBase + (altoFila * 4) + yOffset);
+
+    // Fila 6: Concepto (Sin división)
+    doc.setFont("helvetica", "bold"); doc.text("Concepto:", xCol1, yBase + (altoFila * 5) + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${gasto.descripcion || 'Sin descripción'}`, xVal1, yBase + (altoFila * 5) + yOffset);
+
+    // Fila 7: Nota (Sin división)
+    doc.setFont("helvetica", "bold"); doc.text("Nota:", xCol1, yBase + (altoFila * 6) + yOffset);
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal"); 
+    doc.text(`${gasto.nota || 'Sin observaciones'}`, xVal1, yBase + (altoFila * 6) + yOffset, { maxWidth: 65 });
+
+    // --- 6. TABLA DE VALORES ---
+    doc.setFontSize(8);
+    autoTable(doc, {
+      startY: yBase + (altoFila * 8) + 4,
+      head: [["Detalle del Pago", "Precio Unit.", "Monto Total"]],
+      body: [[
+        gasto.descripcion || "Pago de gasto",
+        `$${(gasto.precio_unitario || 0).toLocaleString('es-CO')}`,
+        `$${(gasto.monto || 0).toLocaleString('es-CO')}`
+      ]],
+      theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 2, fontStyle: 'bold' },
+      headStyles: { fillColor: [0, 80, 0] }
+    });
+
+    // --- 7. TOTAL FINAL ---
+    const finalY = doc.lastAutoTable.finalY + 8;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text(`VALOR PAGADO: ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(gasto.monto || 0)}`, 95, finalY, { align: "right" });
+
+    // --- 8. BLOQUE DE FIRMAS ---
+    const yFirmas = finalY + 15;
+    doc.setDrawColor(0, 80, 0);
+    doc.line(10, yFirmas, 45, yFirmas);
+    doc.text("Firma Entrega", 27.5, yFirmas + 4, { align: "center" });
+    doc.line(60, yFirmas, 95, yFirmas);
+    doc.text("Firma Recibe", 77.5, yFirmas + 4, { align: "center" });
+
+    doc.save(`Gasto_${gasto.numero_comprobante || gasto.id}.pdf`);
+
+  } catch (err) {
+    console.error("Error al generar PDF:", err);
+  }
+};
+//=====HASTA AQUI PDF DE GASTOS================
 
 // Función para EDITAR (Carga los datos arriba para corregir)
 const prepararEdicion = (despacho) => {
@@ -657,6 +798,7 @@ const prepararEdicion = (despacho) => {
           guardarGasto={guardarGasto}
           prepararEdicionGasto={prepararEdicionGasto}
           eliminarGasto={eliminarGasto}
+          imprimirGastoPDF={imprimirGastoPDF} // <-- AGREGA ESTA LÍNEA
           
   />
 )}  

@@ -1,9 +1,17 @@
 import { useEffect } from 'react';
 
-//export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, listaProveedores, mostrarAlerta, cargarTodo, supabase, datosEgresos }) {
-// Busque esta línea al inicio del archivo Gastos.jsx y asegúrese de que incluya estas funciones:
-export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, listaProveedores, mostrarAlerta, cargarTodo, datosEgresos, guardarGasto, prepararEdicionGasto, eliminarGasto }) {
-
+export default function Gastos({ 
+  gastoForm, 
+  setGastoForm, 
+  listaInvernaderos, 
+  listaProveedores, 
+  mostrarAlerta, 
+  cargarTodo, 
+  supabase, 
+  datosEgresos,
+  eliminarGasto,   // Prop para eliminar
+  imprimirGastoPDF // Prop para PDF
+}) {
   const categorias = ["Mano de obra", "Insumo Agricola", "Flete", "Mto (Mantenimiento)", "S.Publicos", "Arriendos", "Quincena", "Otros"];
   const unidades = ["Canastilla", "Kilo", "Bulto", "Litro", "Jornal", "Unidad", "Hora", "Otra", "Caja", "Garrafa", "Galon"];
 
@@ -13,10 +21,11 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
     if (total !== parseFloat(gastoForm.monto)) {
       setGastoForm(prev => ({ ...prev, monto: total }));
     }
-  }, [gastoForm.cantidad, gastoForm.precio_unitario]);
+  }, [gastoForm.cantidad, gastoForm.precio_unitario, setGastoForm]);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
+    
     if (!gastoForm.invernadero_id || !gastoForm.monto || !gastoForm.descripcion) {
       mostrarAlerta("Invernadero, Monto y Descripción son obligatorios", "error");
       return;
@@ -25,10 +34,10 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
     const payload = {
       invernadero_id: gastoForm.invernadero_id,
       descripcion: gastoForm.descripcion,
-      monto: parseFloat(gastoForm.monto),
+      monto: parseFloat(gastoForm.monto) || 0,
       categoria: gastoForm.categoria,
       proveedor_id: gastoForm.proveedor_id || null,
-      numero_comprobante: gastoForm.numero_comprobante, // Guardando la factura
+      numero_comprobante: gastoForm.numero_comprobante || 'S/N',
       nota: gastoForm.nota,
       fecha_gasto: gastoForm.fecha || new Date().toISOString().split('T')[0],
       cantidad: parseFloat(gastoForm.cantidad) || 0,
@@ -44,8 +53,8 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
       mostrarAlerta("Gasto registrado correctamente", "exito");
       setGastoForm({ 
         invernadero_id: '', descripcion: '', monto: 0, categoria: 'Insumo Agricola', 
-        proveedor_id: '', numero_comprobante: '', nota: '', fecha: '', 
-        cantidad: '', unidad_medida: 'Global', precio_unitario: '' 
+        proveedor_id: '', numero_comprobante: '', nota: '', fecha: new Date().toISOString().split('T')[0], 
+        cantidad: '', unidad_medida: 'Unidad', precio_unitario: '' 
       });
       cargarTodo();
     }
@@ -53,7 +62,7 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
 
   return (
     <div className="space-y-6 pb-20">
-      {/* FORMULARIO DE REGISTRO CON FACTURA Y NOTAS */}
+      {/* FORMULARIO DE REGISTRO */}
       <div className="bg-white p-6 md:p-8 rounded-3xl shadow-xl border-t-8 border-red-700">
         <div className="flex justify-between items-start mb-6">
           <div className="flex items-center gap-2">
@@ -66,16 +75,12 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
           </div>
         </div>
 
-        <form onSubmit={guardarGasto} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-  <div className="space-y-1">
-    <label className="text-[10px] font-black text-gray-400 uppercase px-1">Fecha</label>
-    <input 
-      type="date" 
-      className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-500 font-bold" 
-      value={gastoForm.fecha} 
-      onChange={e => setGastoForm({...gastoForm, fecha: e.target.value})} 
-    />
-  </div>
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase px-1">Fecha</label>
+            <input type="date" className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-500 font-bold" 
+              value={gastoForm.fecha} onChange={e => setGastoForm({...gastoForm, fecha: e.target.value})} />
+          </div>
 
           <div className="space-y-1">
             <label className="text-[10px] font-black text-gray-400 uppercase px-1">Invernadero</label>
@@ -96,7 +101,7 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
 
           <div className="md:col-span-2 space-y-1">
             <label className="text-[10px] font-black text-gray-400 uppercase px-1">Concepto del Gasto</label>
-            <input placeholder="Ej: Compra de abono orgánico" className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-500 font-bold" 
+            <input placeholder="Ej: Compra de abono" className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-500 font-bold" 
               value={gastoForm.descripcion} onChange={e => setGastoForm({...gastoForm, descripcion: e.target.value})} />
           </div>
 
@@ -109,11 +114,11 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
             </select>
           </div>
 
-          {/* DETALLE ECONÓMICO (CANTIDAD Y PRECIO) */}
+          {/* DETALLE ECONÓMICO */}
           <div className="bg-slate-50 p-4 rounded-2xl border-2 border-slate-100 grid grid-cols-2 md:grid-cols-4 md:col-span-3 gap-4">
             <div className="space-y-1">
               <label className="text-[9px] font-black text-slate-500 uppercase">Cantidad</label>
-              <input type="number" placeholder="0" className="w-full p-2 border-b-2 border-slate-300 bg-transparent outline-none font-black text-lg text-slate-700" 
+              <input type="number" className="w-full p-2 border-b-2 border-slate-300 bg-transparent outline-none font-black text-lg text-slate-700" 
                 value={gastoForm.cantidad} onChange={e => setGastoForm({...gastoForm, cantidad: e.target.value})} />
             </div>
             <div className="space-y-1">
@@ -125,27 +130,24 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
             </div>
             <div className="space-y-1">
               <label className="text-[9px] font-black text-slate-500 uppercase">Precio Unitario</label>
-              <input type="number" placeholder="0" className="w-full p-2 border-b-2 border-slate-300 bg-transparent outline-none font-black text-lg text-red-600" 
+              <input type="number" className="w-full p-2 border-b-2 border-slate-300 bg-transparent outline-none font-black text-lg text-red-600" 
                 value={gastoForm.precio_unitario} onChange={e => setGastoForm({...gastoForm, precio_unitario: e.target.value})} />
             </div>
-            <div className="space-y-1">
-              <label className="text-[9px] font-black text-slate-500 uppercase italic">Monto Total Calculado</label>
-              <div className="text-xl font-black text-slate-800 p-2 italic">
-                ${(parseFloat(gastoForm.monto) || 0).toLocaleString()}
-              </div>
+            <div className="space-y-1 text-center">
+              <label className="text-[9px] font-black text-slate-500 uppercase italic">Monto Total</label>
+              <div className="text-xl font-black text-slate-800 p-2 italic">${(parseFloat(gastoForm.monto) || 0).toLocaleString()}</div>
             </div>
           </div>
 
-          {/* NUEVOS CAMPOS: FACTURA Y NOTAS */}
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-400 uppercase px-1 text-red-600">N° Comprobante / Factura</label>
-            <input placeholder="Ej: FAC-123" className="w-full border-2 border-red-200 p-3 rounded-xl outline-none focus:border-red-500 font-bold" 
+            <label className="text-[10px] font-black text-gray-400 uppercase px-1 text-red-600">N° Comprobante</label>
+            <input className="w-full border-2 border-red-200 p-3 rounded-xl outline-none font-bold" 
               value={gastoForm.numero_comprobante} onChange={e => setGastoForm({...gastoForm, numero_comprobante: e.target.value})} />
           </div>
 
           <div className="md:col-span-2 space-y-1">
-            <label className="text-[10px] font-black text-gray-400 uppercase px-1">Notas Adicionales</label>
-            <input placeholder="Observaciones sobre este gasto..." className="w-full border-2 p-3 rounded-xl outline-none focus:border-red-500 font-bold" 
+            <label className="text-[10px] font-black text-gray-400 uppercase px-1">Notas</label>
+            <input className="w-full border-2 p-3 rounded-xl outline-none font-bold" 
               value={gastoForm.nota} onChange={e => setGastoForm({...gastoForm, nota: e.target.value})} />
           </div>
 
@@ -155,89 +157,55 @@ export default function Gastos({ gastoForm, setGastoForm, listaInvernaderos, lis
         </form>
       </div>
 
-      {/* HISTORIAL CON ALTO CONTRASTE Y FACTURAS */}
+      {/* TABLA DE HISTORIAL */}
       <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-400">
-        <div className="p-5 bg-gray-200 border-b-2 border-gray-400 flex justify-between items-center">
+        <div className="p-5 bg-gray-200 border-b-2 border-gray-400">
           <h3 className="font-black text-slate-800 text-xs uppercase tracking-widest">Historial Detallado de Gastos</h3>
-          <span className="bg-red-700 text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase">Oficial</span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[11px] border-collapse">
             <thead>
-            <tr className="bg-gray-300 text-slate-800 uppercase font-black text-[11px] italic">
-            <th className="p-4 border-b-2 border-gray-400">Fecha / Factura</th>
-            <th className="p-4 border-b-2 border-gray-400">Invernadero</th>
-            <th className="p-4 border-b-2 border-gray-400">Concepto / Nota</th>
-            <th className="p-4 border-b-2 border-gray-400 text-center">Detalle</th>
-           <th className="p-4 border-b-2 border-gray-400 text-right">Monto</th>
-    {/* Nueva columna para los botones de Editar y Borrar */}
-    <th className="p-4 border-b-2 border-gray-400 text-right">ACCIONES</th>
-  </tr>
-</thead>
+              <tr className="bg-gray-300 text-slate-800 uppercase font-black italic">
+                <th className="p-4 border-b-2 border-gray-400">Fecha / Factura</th>
+                <th className="p-4 border-b-2 border-gray-400">Invernadero</th>
+                <th className="p-4 border-b-2 border-gray-400">Concepto</th>
+                <th className="p-4 border-b-2 border-gray-400 text-center">Detalle</th>
+                <th className="p-4 border-b-2 border-gray-400 text-right">Monto</th>
+                <th className="p-4 border-b-2 border-gray-400 text-right">Acciones</th>
+              </tr>
+            </thead>
             <tbody className="divide-y-2 divide-gray-400">
-  {datosEgresos?.sort((a, b) => b.id - a.id).map((g, index) => (
-    <tr 
-      key={g.id} 
-      // Efecto cebra fuerte: gris marcado y borde lateral rojo como en tu diseño original
-      className={`
-        ${index % 2 === 0 ? 'bg-white' : 'bg-gray-200'} 
-        hover:bg-yellow-100 transition-colors border-l-8 border-red-700
-      `}
-    >
-      <td className="p-4">
-        <div className="font-black text-slate-900">{g.fecha_gasto}</div>
-        <div className="text-[10px] text-red-700 font-black">
-          {g.numero_comprobante ? `DOC: ${g.numero_comprobante}` : 'S/N'}
-        </div>
-      </td>
-      <td className="p-4">
-        <span className="bg-slate-700 text-white px-2 py-1 rounded text-[9px] font-black uppercase shadow-sm">
-          {g.invernaderos?.nombre || 'Gral'}
-        </span>
-      </td>
-      <td className="p-4">
-        <p className="font-black text-slate-900 uppercase leading-tight">{g.descripcion}</p>
-        {g.nota && <p className="text-[9px] text-slate-500 italic">"{g.nota}"</p>}
-        <p className="text-[8px] text-slate-400 font-bold uppercase">{g.categoria}</p>
-      </td>
-      <td className="p-4 text-center">
-        <div className="font-black text-slate-800">{g.cantidad} {g.unidad_medida}</div>
-        <div className="text-[9px] text-slate-400 font-bold">
-          ${(g.precio_unitario || 0).toLocaleString()} c/u
-        </div>
-      </td>
-      <td className="p-4 text-right font-black text-red-700 text-[13px]">
-        ${new Intl.NumberFormat('es-CO').format(g.monto || 0)}
-      </td>
-
-      {/* --- NUEVA COLUMNA DE ACCIONES SIEMPRE VISIBLES --- */}
-      <td className="p-4 text-right">
-        <div className="flex gap-3 justify-end">
-          <button 
-            onClick={() => prepararEdicionGasto(g)}
-            className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all shadow-md active:scale-95"
-            //className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all shadow-md"
-            title="Editar Gasto"
-          >
-            ✏️
-          </button>
-          <button 
-            onClick={() => eliminarGasto(g.id)}
-            //className="text-red-600 hover:text-red-900"
-            className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all shadow-md active:scale-90"
-            //className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all shadow-md active:scale-95"
-            title="Eliminar Gasto"
-          >
-            🗑️
-          </button>
-
-          
-        </div>
-      </td>
-    </tr>
-  ))}
-</tbody>
+              {datosEgresos?.sort((a, b) => b.id - a.id).map((g, index) => (
+                <tr key={g.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-200'} hover:bg-yellow-100 transition-colors`}>
+                  <td className="p-4 border-l-8 border-red-700">
+                    <div className="font-black text-slate-900">{g.fecha_gasto}</div>
+                    <div className="text-[10px] text-red-700 font-black">{g.numero_comprobante ? `DOC: ${g.numero_comprobante}` : 'S/N'}</div>
+                  </td>
+                  <td className="p-4">
+                    <span className="bg-slate-700 text-white px-2 py-1 rounded text-[9px] font-black uppercase shadow-sm">
+                      {g.invernaderos?.nombre || 'Gral'}
+                    </span>
+                  </td>
+                  <td className="p-4 font-black uppercase">{g.descripcion}</td>
+                  <td className="p-4 text-center">
+                    <div className="font-black text-slate-800">{g.cantidad} {g.unidad_medida}</div>
+                    <div className="text-[9px] text-slate-400 font-bold">${(g.precio_unitario || 0).toLocaleString()} c/u</div>
+                  </td>
+                  <td className="p-4 text-right font-black text-red-700 text-[13px]">
+                    ${new Intl.NumberFormat('es-CO').format(g.monto || 0)}
+                  </td>
+                  <td className="p-4 text-right">
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => imprimirGastoPDF(g)} className="p-2 bg-slate-800 text-white rounded-lg hover:bg-black shadow-md flex items-center gap-1">
+                        <span className="text-sm">🖨️</span><span className="text-[10px] font-bold">PDF</span>
+                      </button>
+                      <button onClick={() => eliminarGasto(g.id)} className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-md">🗑️</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
       </div>
