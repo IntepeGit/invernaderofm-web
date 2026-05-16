@@ -205,6 +205,7 @@ export default function Gastos({
                   </td>
                 </tr>
               ))}
+              
             </tbody>
           </table>
         </div>
