@@ -538,13 +538,13 @@ const imprimirGastoPDF = (gasto) => {
     const logoUrl = '/Logopapel.png';
     doc.addImage(logoUrl, 'PNG', 42.5, 7, 20, 20);
 
-    // --- 3. N° COMPROBANTE (Arriba a la izquierda) ---
+    // --- 3. N° COMPROBANTE ---
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(0);
     doc.text("Comp. N°:", 10, 12);
     doc.setFont("helvetica", "normal");
-    doc.text(`${gasto.numero_comprobante || 'S/N'}`, 28, 12);
+    doc.text(`${gasto.numero_comprobante || gasto.id || 'S/N'}`, 28, 12);
 
     // --- 4. TÍTULO ---
     doc.setFont("helvetica", "bold");
@@ -552,105 +552,119 @@ const imprimirGastoPDF = (gasto) => {
     doc.setTextColor(0, 80, 0);
     doc.text("COMPROBANTE DE GASTO", 52.5, 30, { align: "center" });
 
-    // --- 5. BLOQUE DE DATOS ORGANIZADO ---
+    // --- 5. CUADRÍCULA DE DATOS BÁSICOS (FILA 1 Y 2) ---
     doc.setTextColor(0);
     doc.setFontSize(8);
-    
-    const xCol1 = 10, xVal1 = 32, xCol2 = 54, xVal2 = 72;
-    const altoFila = 5.5; 
+    const altoFila = 5;
     const yBase = 35;
-    const yOffset = 3.8; 
 
-    // Fondos Cebra (Filas 1, 3, 5 y 7 si fuera necesario)
-    doc.setFillColor(230, 245, 230);
-    doc.rect(7, yBase, 91, altoFila, 'F');             // Fila 1 (Fecha/Cat)
-    doc.rect(7, yBase + (altoFila * 2), 91, altoFila, 'F'); // Fila 3 (Prov/NIT)
-    doc.rect(7, yBase + (altoFila * 4), 91, altoFila, 'F'); // Fila 5 (Uni/Cant)
-    doc.rect(7, yBase + (altoFila * 6), 91, altoFila, 'F'); // Fila 7 (Concepto)
+    // Fila 1: Fondo Cebra
+    doc.setFillColor(180, 220, 180); 
+    doc.rect(7, yBase, 91, altoFila, 'F'); 
 
-    // Marco de la cuadrícula (8 filas para que quepa todo)
     doc.setDrawColor(0, 80, 0);
     doc.setLineWidth(0.2);
-    doc.rect(7, yBase, 91, altoFila * 8);
+    doc.rect(7, yBase, 91, altoFila * 2); 
+    doc.line(7, yBase + altoFila, 98, yBase + altoFila); 
+    doc.line(50, yBase, 50, yBase + (altoFila * 2)); 
+
+    const yOffset = 3.5; 
+
+    // Fila 1: Fecha e Invernadero
+    doc.setFont("helvetica", "bold"); doc.text("Fecha:", 10, yBase + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${gasto.fecha_gasto || ''}`, 25, yBase + yOffset);
+    doc.setFont("helvetica", "bold"); doc.text("Invernadero:", 52, yBase + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${gasto.invernaderos?.nombre || 'Gral'}`, 72, yBase + yOffset);
+
+    // Fila 2: Nombre del Proveedor (Búsqueda exhaustiva del nombre)
+    const nombreProv = gasto.nombre_proveedor || gasto.proveedores?.nombre_completo || gasto.proveedores?.nombre || 'Particular';
+    doc.setFont("helvetica", "bold"); doc.text("Proveedor:", 10, yBase + altoFila + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${nombreProv}`, 27, yBase + altoFila + yOffset);
+
+    // --- 6. BLOQUE CEBRA: DETALLES PROVEEDOR Y NOTA ---
+    let yDetalles = yBase + (altoFila * 2);
     
-    for(let i=1; i<=7; i++) {
-      doc.line(7, yBase + (altoFila * i), 98, yBase + (altoFila * i));
-    }
-
-    // Líneas divisorias verticales
-    doc.line(52, yBase, 52, yBase + (altoFila * 2)); // Fila 1 y 2
-    doc.line(52, yBase + (altoFila * 2), 52, yBase + (altoFila * 3)); // Fila 3 (Prov/NIT)
-    doc.line(52, yBase + (altoFila * 3), 52, yBase + (altoFila * 4)); // Fila 4 (Tel/Ciu)
-    doc.line(52, yBase + (altoFila * 4), 52, yBase + (altoFila * 5)); // Fila 5 (Uni/Cant)
-
-    // --- LLENADO DE DATOS ---
+    // Fila 3: Fondo Cebra para Detalles
+    doc.setFillColor(180, 220, 180);
+    doc.rect(7, yDetalles, 91, altoFila, 'F');
     
-    // Fila 1: Fecha y Categoría
-    doc.setFont("helvetica", "bold"); doc.text("Fecha:", xCol1, yBase + yOffset);
-    doc.setFont("helvetica", "normal"); doc.text(`${gasto.fecha_gasto || ''}`, xVal1, yBase + yOffset);
-    doc.setFont("helvetica", "bold"); doc.text("Categoría:", xCol2, yBase + yOffset);
-    doc.setFont("helvetica", "normal"); doc.text(`${gasto.categoria || 'N/A'}`, xVal2, yBase + yOffset);
+    // Bordes del bloque
+    doc.rect(7, yDetalles, 91, altoFila * 2); 
+    doc.line(7, yDetalles + altoFila, 98, yDetalles + altoFila);
 
-    // Fila 2: Invernadero
-    doc.setFont("helvetica", "bold"); doc.text("Invernadero:", xCol1, yBase + altoFila + yOffset);
-    doc.setFont("helvetica", "normal"); doc.text(`${gasto.invernaderos?.nombre || 'General'}`, xVal1, yBase + altoFila + yOffset);
+    // Mapeo de datos desde el objeto (según tus imágenes de la base de datos)
+    const nit = gasto.nit_cc || gasto.proveedores?.nit_cc || 'N/A';
+    const tel = gasto.telefono_proveedor || gasto.proveedores?.telefono || 'N/A';
+    const ciudad = gasto.ciudad_proveedor || gasto.proveedores?.ciudad || 'N/A';
 
-    // Fila 3: Proveedor y NIT/Cédula
-    doc.setFont("helvetica", "bold"); doc.text("Proveedor:", xCol1, yBase + (altoFila * 2) + yOffset);
-    doc.setFont("helvetica", "normal"); doc.text(`${gasto.proveedores?.nombre || 'Particular'}`, xVal1, yBase + (altoFila * 2) + yOffset);
-    doc.setFont("helvetica", "bold"); doc.text("NIT/CC:", xCol2, yBase + (altoFila * 2) + yOffset);
-    doc.setFont("helvetica", "normal"); doc.text(`${gasto.proveedores?.nit || 'N/A'}`, xVal2, yBase + (altoFila * 2) + yOffset);
+    // Texto Fila 3: Detalles (NIT, TEL, CIUDAD)
+    doc.setFont("helvetica", "bold"); doc.text("NIT/CC:", 10, yDetalles + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${nit}`, 22, yDetalles + yOffset);
+    doc.setFont("helvetica", "bold"); doc.text("TEL:", 45, yDetalles + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${tel}`, 54, yDetalles + yOffset);
+    doc.setFont("helvetica", "bold"); doc.text("CIUDAD:", 72, yDetalles + yOffset);
+    doc.setFont("helvetica", "normal"); doc.text(`${ciudad}`, 86, yDetalles + yOffset);
 
-    // Fila 4: Teléfono y Ciudad
-    doc.setFont("helvetica", "bold"); doc.text("Teléfono:", xCol1, yBase + (altoFila * 3) + yOffset);
-    doc.setFont("helvetica", "normal"); doc.text(`${gasto.proveedores?.telefono || 'N/A'}`, xVal1, yBase + (altoFila * 3) + yOffset);
-    doc.setFont("helvetica", "bold"); doc.text("Ciudad:", xCol2, yBase + (altoFila * 3) + yOffset);
-    doc.setFont("helvetica", "normal"); doc.text(`${gasto.proveedores?.ciudad || 'N/A'}`, xVal2, yBase + (altoFila * 3) + yOffset);
-
-    // Fila 5: Unidad y Cantidad
-    doc.setFont("helvetica", "bold"); doc.text("Unidad:", xCol1, yBase + (altoFila * 4) + yOffset);
-    doc.setFont("helvetica", "normal"); doc.text(`${gasto.unidad_medida || 'N/A'}`, xVal1, yBase + (altoFila * 4) + yOffset);
-    doc.setFont("helvetica", "bold"); doc.text("Cantidad:", xCol2, yBase + (altoFila * 4) + yOffset);
-    doc.setFont("helvetica", "normal"); doc.text(`${String(gasto.cantidad || '0')}`, xVal2, yBase + (altoFila * 4) + yOffset);
-
-    // Fila 6: Concepto (Sin división)
-    doc.setFont("helvetica", "bold"); doc.text("Concepto:", xCol1, yBase + (altoFila * 5) + yOffset);
-    doc.setFont("helvetica", "normal"); doc.text(`${gasto.descripcion || 'Sin descripción'}`, xVal1, yBase + (altoFila * 5) + yOffset);
-
-    // Fila 7: Nota (Sin división)
-    doc.setFont("helvetica", "bold"); doc.text("Nota:", xCol1, yBase + (altoFila * 6) + yOffset);
-    doc.setFontSize(7);
+    // Texto Fila 4: Nota (Dentro de la cuadrícula)
+    doc.setFont("helvetica", "bold"); doc.text("NOTA:", 10, yDetalles + altoFila + yOffset);
     doc.setFont("helvetica", "normal"); 
-    doc.text(`${gasto.nota || 'Sin observaciones'}`, xVal1, yBase + (altoFila * 6) + yOffset, { maxWidth: 65 });
+    doc.setFontSize(7);
+    doc.text(`${gasto.nota || 'Sin observaciones'}`, 20, yDetalles + altoFila + yOffset);
 
-    // --- 6. TABLA DE VALORES ---
+    // --- 7. TABLA DE VALORES ---
     doc.setFontSize(8);
     autoTable(doc, {
-      startY: yBase + (altoFila * 8) + 4,
-      head: [["Detalle del Pago", "Precio Unit.", "Monto Total"]],
+      startY: yDetalles + (altoFila * 2) + 4,
+      margin: { left: 7, right: 1 }, 
+      head: [["Cant.", "Unidad", "Detalle del Pago", "Precio Unit.", "Monto Total"]],
       body: [[
+        gasto.cantidad || 0,
+        gasto.unidad_medida || "Unidad",
         gasto.descripcion || "Pago de gasto",
         `$${(gasto.precio_unitario || 0).toLocaleString('es-CO')}`,
         `$${(gasto.monto || 0).toLocaleString('es-CO')}`
       ]],
       theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 2, fontStyle: 'bold' },
-      headStyles: { fillColor: [0, 80, 0] }
+      styles: { 
+        fontSize: 7, 
+        cellPadding: 3,       
+        valign: 'middle',    
+        overflow: 'linebreak',
+        lineWidth: 0.2,      
+        lineColor: [0, 80, 0] 
+      },
+      headStyles: { 
+        fillColor: [0, 80, 0], 
+        textColor: [255, 255, 255],
+        halign: 'center',    
+        valign: 'middle',
+        fontStyle: 'bold',
+        cellPadding: { top: 1, bottom: 1, left: 2, right: 2 }, 
+        minCellHeight: 4      
+      },
+      columnStyles: {
+        0: { cellWidth: 9, halign: 'center', valign: 'middle' },
+        1: { cellWidth: 14, halign: 'center', valign: 'middle' },
+        2: { cellWidth: 35, halign: 'left', valign: 'middle' },
+        3: { cellWidth: 15, halign: 'right', valign: 'middle' },
+        4: { cellWidth: 19, halign: 'right', valign: 'middle' }
+      }
     });
 
-    // --- 7. TOTAL FINAL ---
+    // --- 8. TOTAL Y FIRMAS ---
     const finalY = doc.lastAutoTable.finalY + 8;
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
-    doc.text(`VALOR PAGADO: ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' }).format(gasto.monto || 0)}`, 95, finalY, { align: "right" });
+    doc.setTextColor(0);
+    doc.text(`VALOR PAGADO: ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(gasto.monto || 0)}`, 95, finalY, { align: "right" });
 
-    // --- 8. BLOQUE DE FIRMAS ---
     const yFirmas = finalY + 15;
-    doc.setDrawColor(0, 80, 0);
+    doc.setDrawColor(0);
     doc.line(10, yFirmas, 45, yFirmas);
-    doc.text("Firma Entrega", 27.5, yFirmas + 4, { align: "center" });
     doc.line(60, yFirmas, 95, yFirmas);
-    doc.text("Firma Recibe", 77.5, yFirmas + 4, { align: "center" });
+    doc.setFontSize(7);
+    doc.text("ENTREGUÉ CONFORME", 15, yFirmas + 4);
+    doc.text("RECIBÍ CONFORME", 68, yFirmas + 4);
 
     doc.save(`Gasto_${gasto.numero_comprobante || gasto.id}.pdf`);
 
