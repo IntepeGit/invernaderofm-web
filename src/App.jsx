@@ -14,6 +14,10 @@ import ConfigCli from './pages/ConfigCli.jsx'
 import ConfigProv from './pages/ConfigProv.jsx'
 import ReporteVentas from './pages/ReporteVentas.jsx'
 import Dashboard from './pages/Dashboard.jsx'
+import Inventario from './pages/Inventario.jsx'
+import Cosecha from './pages/Cosecha.jsx'
+import ConfigCosecha from './pages/ConfigCosecha.jsx'
+import Nomina from './pages/Nomina.jsx'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -718,6 +722,11 @@ const prepararEdicion = (despacho) => {
           <NavItem id="gastos" label="Gastos" icon="📉" />
           <NavItem id="reporte" label="Reporte de Ventas" icon="📈" />
           
+          {/* === BOTÓN AGREGADO USANDO TU COMPONENTE NAVITEM === */}
+          <NavItem id="inventario" label="Inventario Bodega" icon="📦" />
+          <NavItem id="cosecha" label="Cosecha Diaria" icon="🚜" />
+          <NavItem id="nomina" label="Nómina / Mano Obra" icon="👥" />
+          
           <div className="space-y-1">
             <button onClick={() => setShowConfigSubmenu(!showConfigSubmenu)} 
               className={`flex items-center justify-between w-full p-4 rounded-xl transition ${tab.startsWith('config-') ? 'bg-green-800 text-white' : 'text-green-100 hover:bg-green-800'}`}>
@@ -732,6 +741,7 @@ const prepararEdicion = (despacho) => {
                 <button onClick={() => { setTab('config-inv'); setIsMenuOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-inv' ? 'text-white bg-green-700' : 'text-green-300 hover:bg-green-800'}`}>🏠 Invernaderos</button>
                 <button onClick={() => { setTab('config-cli'); setIsMenuOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-cli' ? 'text-white bg-green-700' : 'text-green-300 hover:bg-green-800'}`}>👥 Clientes</button>
                 <button onClick={() => { setTab('config-prov'); setIsMenuOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-prov' ? 'text-white bg-green-700' : 'text-green-300 hover:bg-green-800'}`}>🚚 Proveedores</button>
+                <button onClick={() => { setTab('config-cosecha'); setIsMenuOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-cosecha' ? 'text-white bg-green-700' : 'text-green-300 hover:bg-green-800'}`}>🌿 Parámetros Cosecha</button>
               </div>
             )}
           </div>
@@ -744,7 +754,7 @@ const prepararEdicion = (despacho) => {
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         <header className="bg-white p-4 shadow-sm flex justify-between items-center lg:px-10">
           <button className="lg:hidden text-2xl p-2 text-green-900" onClick={() => setIsMenuOpen(true)}>☰</button>
-          <h1 className="text-xl font-black text-green-900 tracking-tight uppercase">{tab.replace('config-', 'Configuración: ').replace('reporte', 'Reporte de Ventas')}</h1>
+          <h1 className="text-xl font-black text-green-900 tracking-tight uppercase">{tab.replace('config-', 'Configuración: ').replace('reporte', 'Reporte de Ventas').replace('inventario', 'Inventario de Bodega').replace('cosecha', 'Cosecha Diaria').replace('nomina', 'Control de Nómina')}</h1>
           <div className="w-10"></div>
         </header>
 
@@ -757,7 +767,6 @@ const prepararEdicion = (despacho) => {
               datosEgresos={datosEgresos}
               datosPagos={datosPagos}
               balancesGrafica={balancesGrafica}
-               
             />
           )}
 
@@ -773,13 +782,10 @@ const prepararEdicion = (despacho) => {
               datosPagos={datosPagos} 
               mostrarAlerta={mostrarAlerta} 
               guardarDespacho={guardarDespachoCompleto}
-              
-              // ESTAS DOS SON LAS QUE FALTAN CONECTAR:
               eliminarDespacho={eliminarDespacho} 
               prepararEdicion={prepararEdicion}
-              prepararEdicion={prepararEdicionDespacho}
+              prepararEdicionDespacho={prepararEdicionDespacho}
               imprimirPDF={imprimirPDF}
-
             />
           )}
 
@@ -798,24 +804,22 @@ const prepararEdicion = (despacho) => {
             />
           )}
                     
-      {tab === 'gastos' && (
-        <Gastos 
-          gastoForm={gastoForm}
-          setGastoForm={setGastoForm} 
-          listaInvernaderos={listaInvernaderos}
-          listaProveedores={listaProveedores} 
-          mostrarAlerta={mostrarAlerta}
-          cargarTodo={cargarTodo} 
-          supabase={supabase}
-          datosEgresos={datosEgresos}
-    // AÑADIR ESTAS 3 LÍNEAS ABAJO:
-          guardarGasto={guardarGasto}
-          prepararEdicionGasto={prepararEdicionGasto}
-          eliminarGasto={eliminarGasto}
-          imprimirGastoPDF={imprimirGastoPDF} // <-- AGREGA ESTA LÍNEA
-          
-  />
-)}  
+          {tab === 'gastos' && (
+            <Gastos 
+              gastoForm={gastoForm}
+              setGastoForm={setGastoForm} 
+              listaInvernaderos={listaInvernaderos}
+              listaProveedores={listaProveedores} 
+              mostrarAlerta={mostrarAlerta}
+              cargarTodo={cargarTodo} 
+              supabase={supabase}
+              datosEgresos={datosEgresos}
+              guardarGasto={guardarGasto}
+              prepararEdicionGasto={prepararEdicionGasto}
+              eliminarGasto={eliminarGasto}
+              imprimirGastoPDF={imprimirGastoPDF}
+            />
+          )}  
 
           {tab === 'reporte' && (
             <ReporteVentas 
@@ -826,9 +830,41 @@ const prepararEdicion = (despacho) => {
             />
           )}
 
+          {/* === COMPONENTE CENTRAL DE INVENTARIO CONECTADO === */}
+          {tab === 'inventario' && (
+            <Inventario 
+              mostrarAlerta={mostrarAlerta}
+              datosInvernaderos={listaInvernaderos}
+            />
+          )}
+
+          {/* === COMPONENTE CENTRAL DE COSECHA CONECTADO === */}
+          {tab === 'cosecha' && (
+            <Cosecha 
+              mostrarAlerta={mostrarAlerta}
+              listaInvernaderos={listaInvernaderos}
+            />
+          )}
+
+          {/* === COMPONENTE CENTRAL DE NÓMINA CONECTADO === */}
+          {tab === 'nomina' && (
+            <Nomina 
+              mostrarAlerta={mostrarAlerta}
+              listaInvernaderos={listaInvernaderos}
+            />
+          )}
+
           {tab === 'config-inv' && <ConfigInv invForm={invForm} setInvForm={setInvForm} mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} supabase={supabase} lista={listaInvernaderos} />}
           {tab === 'config-cli' && <ConfigCli cliForm={cliForm} setCliForm={setCliForm} mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} supabase={supabase} lista={listaClientes} />}
           {tab === 'config-prov' && <ConfigProv provForm={provForm} setProvForm={setProvForm} mostrarAlerta={mostrarAlerta} cargarTodo={cargarTodo} supabase={supabase} lista={listaProveedores} />}
+        
+          {/* === RENDERIZADO DEL COMPONENTE CONFIGCOSECHA === */}
+          {tab === 'config-cosecha' && (
+            <ConfigCosecha 
+              mostrarAlerta={mostrarAlerta} 
+            />
+          )}
+        
         </main>
       </div>
 
