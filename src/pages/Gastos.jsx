@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 export default function Gastos({ 
   gastoForm, 
@@ -23,6 +25,143 @@ export default function Gastos({
       setGastoForm(prev => ({ ...prev, monto: total }));
     }
   }, [gastoForm.cantidad, gastoForm.precio_unitario, setGastoForm]);
+
+// --- FUNCIÓN PARA EXPORTAR GASTOS A EXCEL CON FORMATO TABLA Y FILTROS ---
+// --- FUNCIÓN CONFIRMADA: EXPORTAR GASTOS CON ESTILOS VISUALES ---
+  const exportarAExcel = async () => {
+    if (!datosEgresos || datosEgresos.length === 0) {
+      mostrarAlerta("No hay datos de gastos para exportar", "error");
+      return;
+    }
+
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Control de Gastos');
+
+      // 1. Definir columnas y anchos holgados
+      worksheet.columns = [
+        { header: 'FECHA GASTO', key: 'fecha', width: 15 },
+        { header: 'COMPROBANTE N°', key: 'comprobante', width: 18 },
+        { header: 'INVERNADERO', key: 'invernadero', width: 18 },
+        { header: 'PROVEEDOR', key: 'proveedor', width: 25 },
+        { header: 'NIT / CC', key: 'nit', width: 16 },
+        { header: 'CATEGORÍA', key: 'categoria', width: 20 },
+        { header: 'DESCRIPCIÓN / DETALLE', key: 'descripcion', width: 35 },
+        { header: 'CANTIDAD', key: 'cantidad', width: 12 },
+        { header: 'UNIDAD MEDIDA', key: 'unidad', width: 16 },
+        { header: 'PRECIO UNITARIO', key: 'precio', width: 18 },
+        { header: 'MONTO TOTAL', key: 'monto', width: 18 },
+        { header: 'NOTA / OBSERVACIONES', key: 'nota', width: 30 }
+      ];
+
+      // 2. Mapear y agregar las filas de datos
+      datosEgresos.forEach((g) => {
+        const proveedor = g.nombre_proveedor || g.proveedores?.nombre_completo || g.proveedores?.nombre || 'Particular';
+        const nit = g.nit_cc || g.proveedores?.nit_cc || 'N/A';
+        const invernadero = g.nombre_invernadero || g.invernaderos?.nombre || 'General';
+
+        worksheet.addRow({
+          fecha: g.fecha_gasto || '',
+          comprobante: g.numero_comprobante || 'S/N',
+          invernadero: invernadero.toUpperCase(),
+          proveedor: proveedor.toUpperCase(),
+          nit: nit,
+          categoria: (g.categoria || 'Sin Categoría').toUpperCase(),
+          descripcion: g.descripcion || '',
+          cantidad: parseFloat(g.cantidad) || 0,
+          unidad: g.unidad_medida || 'Unidad',
+          precio: parseFloat(g.precio_unitario) || 0,
+          monto: parseFloat(g.monto) || 0,
+          nota: g.nota || ''
+        });
+      });
+
+      // 3. Diseño de la Cabecera (Fila 1 - Verde oliva firme)
+      const headerRow = worksheet.getRow(1);
+      headerRow.height = 24;
+      
+      headerRow.eachCell((cell) => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF70AD47' }
+        };
+        cell.font = {
+          name: 'Arial',
+          size: 10,
+          bold: true,
+          color: { argb: 'FFFFFFFF' }
+        };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+          bottom: { style: 'medium', color: { argb: 'FF000000' } },
+          left: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+          right: { style: 'thin', color: { argb: 'FFD3D3D3' } }
+        };
+      });
+
+      // 4. Diseño del Cuerpo (Formatos, Cebra y Bordes)
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return;
+
+        row.height = 20;
+        const esCebra = rowNumber % 2 === 0;
+
+        row.eachCell((cell, colNumber) => {
+          cell.font = { name: 'Arial', size: 9 };
+          
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+            bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+            left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+            right: { style: 'thin', color: { argb: 'FFE0E0E0' } }
+          };
+
+          if (esCebra) {
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFE2EFDA' } // Verde claro intercalado
+            };
+          }
+
+          // Alineaciones
+          if ([1, 2, 5].includes(colNumber)) {
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          } else if ([8, 10, 11].includes(colNumber)) {
+            cell.alignment = { vertical: 'middle', horizontal: 'right' };
+          } else {
+            cell.alignment = { vertical: 'middle', horizontal: 'left' };
+          }
+
+          // Formatos numéricos nativos
+          if (colNumber === 8) cell.numFmt = '#,##0';
+          if (colNumber === 10 || colNumber === 11) cell.numFmt = '"$"#,##0';
+        });
+      });
+
+      // 5. Activar Autofiltros
+      worksheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: worksheet.rowCount, column: worksheet.columnCount }
+      };
+
+      // 6. Descarga del archivo
+      const buffer = await workbook.xlsx.writeBuffer();
+      const fechaHoy = new Date().toISOString().split('T')[0];
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      
+      saveAs(blob, `BITACORA_GASTOS_${fechaHoy}.xlsx`);
+      
+      if (typeof mostrarAlerta === "function") {
+        mostrarAlerta("Reporte de gastos generado con éxito", "exito");
+      }
+    } catch (error) {
+      console.error("Error al exportar Excel:", error);
+    }
+  };
+// FIN FUNCION EXCEL
 
   const handleSubmit = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -162,6 +301,16 @@ export default function Gastos({
       <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-400">
         <div className="p-5 bg-gray-200 border-b-2 border-gray-400">
           <h3 className="font-black text-slate-800 text-xs uppercase tracking-widest">Historial Detallado de Gastos</h3>
+
+        <button
+            onClick={exportarAExcel}
+            className="px-4 py-2 bg-emerald-700 text-white font-black italic rounded-xl shadow-md hover:bg-emerald-800 transition-colors flex items-center gap-2 text-xs uppercase tracking-wider"
+          >
+            📊 Exportar a Excel
+          </button>
+
+
+
         </div>
 
         <div className="overflow-x-auto">

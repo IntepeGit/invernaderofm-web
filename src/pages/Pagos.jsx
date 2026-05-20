@@ -1,4 +1,10 @@
 import React from 'react';
+import { supabase } from '../lib/supabase';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+import * as XLSX from 'xlsx';
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable"; // <-- ¡Esta es la línea clave que faltaba!
 
 export default function Pagos({ 
   pagoForm, setPagoForm, listaClientes, datosDespachos, 
@@ -11,6 +17,393 @@ export default function Pagos({
     currency: 'COP', 
     minimumFractionDigits: 0 
   }).format(valor || 0);
+  
+// --- FUNCIÓN CONFIRMADA: EXPORTAR PAGOS EXCEL CON ESTILOS VISUALES ---
+// --- FUNCIÓN CONFIRMADA Y SINCRONIZADA: EXPORTAR PAGOS EXCEL CON RELACIONES REALES ---
+  const exportarPagosAExcel = async () => {
+    if (!datosPagos || datosPagos.length === 0) {
+      if (typeof mostrarAlerta === "function") {
+        mostrarAlerta("No hay datos de pagos para exportar", "error");
+      }
+      return;
+    }
+
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Control de Pagos');
+
+      // 1. Columnas en el orden estricto solicitado por William
+      worksheet.columns = [
+        { header: 'FECHA', key: 'fecha_despacho', width: 14 },
+        { header: 'INVERNADERO', key: 'invernadero', width: 16 },
+        { header: 'CLIENTE', key: 'cliente', width: 25 },
+        { header: 'NIT / CC', key: 'nit', width: 16 },
+        { header: 'N° DE REMISIÓN', key: 'remision', width: 18 },
+        { header: 'VALOR INICIAL', key: 'valor_inicial', width: 18 },
+        { header: 'FECHA ABONO', key: 'fecha_abono', width: 15 },
+        { header: 'VALOR ABONO', key: 'valor_abono', width: 18 },
+        { header: 'SALDO', key: 'saldo', width: 18 },
+        { header: 'REFERENCIA / NOTA', key: 'nota', width: 35 }
+      ];
+
+      // 2. Mapear los datos extrayendo la información cruzada en tiempo real
+      datosPagos.forEach((p) => {
+        if (!p) return;
+
+        // CRUCE INTELIGENTE: Buscamos la remisión original en datosDespachos usando despacho_id
+        const despachoCoincidente = datosDespachos?.find(
+          d => d.id?.toString() === p.despacho_id?.toString()
+        );
+
+        // --- FECHA DE LA REMISIÓN ORIGINAL (No la del abono) ---
+        const fechaRemisionReal = despachoCoincidente?.fecha_venta || despachoCoincidente?.fecha || p.fecha_despacho || 'S/F';
+
+        // --- INVERNADERO ---
+        const invernaderoNom = despachoCoincidente?.invernaderos?.nombre || despachoCoincidente?.nombre_invernadero || 'GENERAL';
+
+        // --- CLIENTE Y NIT_CC ---
+        const clienteNom = despachoCoincidente?.clientes?.nombre_completo || p.clientes?.nombre_completo || p.nombre_cliente || 'PARTICULAR';
+        const clienteNit = despachoCoincidente?.clientes?.nit_cc || p.clientes?.nit_cc || p.nit_cc || 'N/A';
+
+        // --- N° DE REMISIÓN ---
+        const numeroRemision = despachoCoincidente?.numero_remision || p.numero_remision || 'S/N';
+
+        // --- VALORES MONETARIOS ---
+        const valorInicial = parseFloat(despachoCoincidente?.total_venta || p.valor_inicial || 0);
+        const valorAbono = parseFloat(p.monto || p.valor_abono || 0);
+        
+        // Cálculo exacto del saldo restante de la cartera para esa fila
+        const saldoCalculado = valorInicial > 0 ? (valorInicial - valorAbono) : 0;
+
+        worksheet.addRow({
+          fecha_despacho: fechaRemisionReal ? String(fechaRemisionReal).split('T')[0] : '',
+          invernadero: String(invernaderoNom).toUpperCase(),
+          cliente: String(clienteNom).toUpperCase(),
+          nit: clienteNit,
+          remision: numeroRemision,
+          valor_inicial: valorInicial,
+          fecha_abono: p.fecha_pago ? String(p.fecha_pago).split('T')[0] : '', // Fecha del abono
+          valor_abono: valorAbono,
+          saldo: saldoCalculado,
+          nota: String(p.referencia || p.nota || '').toUpperCase()
+        });
+      });
+
+      // 3. Diseño de la Cabecera (Verde oliva corporativo)
+      const headerRow = worksheet.getRow(1);
+      headerRow.height = 24;
+      headerRow.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF70AD47' } };
+        cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+          bottom: { style: 'medium', color: { argb: 'FF000000' } },
+          left: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+          right: { style: 'thin', color: { argb: 'FFD3D3D3' } }
+        };
+      });
+
+      // 4. Diseño del Cuerpo (Formato Cebra e Inteligencia Numérica)
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return;
+        row.height = 20;
+        const esCebra = rowNumber % 2 === 0;
+
+        row.eachCell((cell, colNumber) => {
+          cell.font = { name: 'Arial', size: 9 };
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+            bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+            left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+            right: { style: 'thin', color: { argb: 'FFE0E0E0' } }
+          };
+
+          if (esCebra) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
+          }
+
+          if ([1, 4, 5, 7].includes(colNumber)) {
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          } else if ([6, 8, 9].includes(colNumber)) {
+            cell.alignment = { vertical: 'middle', horizontal: 'right' };
+          } else {
+            cell.alignment = { vertical: 'middle', horizontal: 'left' };
+          }
+
+          if ([6, 8, 9].includes(colNumber)) {
+            cell.numFmt = '"$"#,##0';
+          }
+        });
+      });
+
+      worksheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: worksheet.rowCount, column: worksheet.columnCount }
+      };
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const fechaHoy = new Date().toISOString().split('T')[0];
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      
+      saveAs(blob, `REPORTE_PAGOS_CARTERA_${fechaHoy}.xlsx`);
+      
+      if (typeof mostrarAlerta === "function") {
+        mostrarAlerta("Reporte de cartera sincronizado y generado", "exito");
+      }
+    } catch (error) {
+      console.error("Error al exportar Excel de Pagos:", error);
+    }
+  };  
+// --- FIN FUNCIÓN EXPORTAR PAGOS FIN EXCEL ---
+
+//--INICIO FUNCION IMPRIMIRRE RECIBO CARTERA
+// --- REPORTE DE CARTERA ULTRA-SEGURO CON ESTRUCTURA REAL DE SUPABASE ---
+  const imprimirReciboCarteraPDF = async (remisionData) => {
+    try {
+      // Capturamos el objeto activo seleccionado en la interfaz
+      const remisionActiva = remisionData || remisionSeleccionada || {};
+      
+      if (!remisionActiva || Object.keys(remisionActiva).length === 0) {
+        if (typeof mostrarAlerta === "function") {
+          mostrarAlerta("Por favor, seleccione una remisión en la pantalla antes de imprimir", "error");
+        }
+        return;
+      }
+
+      // 1. EXTRAER IDENTIFICADORES BÁSICOS DE LA REMISIÓN
+      const idVenta = remisionActiva.id; // ID primario (UUID) de la remisión/venta
+      const nRemision = remisionActiva.numero_remision || 'S/N';
+      
+      // Datos de cabecera generales
+      const clienteNom = remisionActiva.clientes?.nombre_completo || remisionActiva.nombre_cliente || 'ABASTOSJM';
+      const clienteNit = remisionActiva.clientes?.nit_cc || remisionActiva.nit_cc || 'N/A';
+      const invernaderoNom = remisionActiva.invernaderos?.nombre || remisionActiva.nombre_invernadero || 'GENERAL';
+      const fechaDespacho = remisionActiva.fecha_venta || remisionActiva.fecha || '';
+      const notaRef = remisionActiva.referencia || remisionActiva.nota || 'SIN OBSERVACIONES';
+      
+      // Valor total inicial de lo que se le cargó al cliente
+      const valorTotalVenta = parseFloat(remisionActiva.total_venta || remisionActiva.total || 0);
+
+      // ==========================================
+      // 2. CONSULTA REAL A SUPABASE: PRODUCTOS DESPACHADOS
+      // ==========================================
+      let bodyProductos = [];
+      
+      const { data: productosDB, error: errorProd } = await supabase
+        .from('detalles_ventas')
+        .select('*')
+        .eq('venta_id', idVenta); // venta_id es correcto según tu esquema
+
+      if (!errorProd && productosDB && productosDB.length > 0) {
+        bodyProductos = productosDB.map(item => {
+          // Ajustado a tu columna real: 'descripcion'
+          const nombreFormateado = String(item.descripcion || 'PRODUCTO').toUpperCase();
+          const cantidadTexto = `${item.cantidad || 0} ${item.escala || item.unidad_medida || 'Unidad'}`;
+          
+          return [
+            nombreFormateado,
+            cantidadTexto,
+            `$${parseFloat(item.subtotal || 0).toLocaleString('es-CO')}`
+          ];
+        });
+      } else {
+        // Fallback por si la relación directa en el objeto local ya tiene datos cargados
+        const fallbackItems = remisionActiva.detalles_ventas || remisionActiva.items || [];
+        if (fallbackItems.length > 0) {
+          bodyProductos = fallbackItems.map(item => [
+            String(item.descripcion || 'PRODUCTO').toUpperCase(),
+            `${item.cantidad || 0} ${item.escala || 'Unidad'}`,
+            `$${parseFloat(item.subtotal || 0).toLocaleString('es-CO')}`
+          ]);
+        } else {
+          bodyProductos = [
+            [`PRODUCTOS DE LA REMISIÓN N° ${nRemision}`, "1 Global", `$${valorTotalVenta.toLocaleString('es-CO')}`]
+          ];
+        }
+      }
+
+      // ==========================================
+      // 3. CONSULTA REAL A SUPABASE: HISTORIAL DE ABONOS (CORREGIDO CON DESPACHO_ID)
+      // ==========================================
+      let bodyAbonos = [];
+      let totalAbonadoAcumulado = 0;
+      
+      // ¡AQUÍ ESTABA EL ERROR DE RAÍZ! Consultamos usando tu columna real: 'despacho_id'
+      const { data: pagosDB, error: errorPagos } = await supabase
+        .from('pagos')
+        .select('*')
+        .eq('despacho_id', idVenta) 
+        .order('fecha_pago', { ascending: true });
+
+      if (!errorPagos && pagosDB && pagosDB.length > 0) {
+        pagosDB.forEach((abono, index) => {
+          // Ajustado a tus columnas reales: 'monto' y 'referencia'/'nota'
+          const monto = parseFloat(abono.monto || 0);
+          totalAbonadoAcumulado += monto;
+          
+          const detalleRaw = abono.referencia || abono.nota || 'ABONO REGISTRADO';
+          
+          bodyAbonos.push([
+            `${index + 1}`,
+            abono.fecha_pago || 'S/F',
+            String(detalleRaw).toUpperCase(),
+            `$${monto.toLocaleString('es-CO')}`
+          ]);
+        });
+      } else {
+        // Fallback secundario si la consulta no retorna datos pero el objeto tiene pagos previos
+        const pagosFallback = remisionActiva.pagos || remisionActiva.abonos || [];
+        if (pagosFallback.length > 0) {
+          pagosFallback.forEach((abono, index) => {
+            const monto = parseFloat(abono.monto || 0);
+            totalAbonadoAcumulado += monto;
+            const detalleRaw = abono.referencia || 'ABONO';
+            bodyAbonos.push([
+              `${index + 1}`,
+              abono.fecha_pago || 'S/F',
+              String(detalleRaw).toUpperCase(),
+              `$${monto.toLocaleString('es-CO')}`
+            ]);
+          });
+        } else {
+          // Si es una remisión sin abonos, la tabla se dibuja limpia en $0 de forma correcta
+          bodyAbonos = [
+            ["-", "-", "SIN ABONOS REGISTRADOS A LA FECHA", "$0"]
+          ];
+          totalAbonadoAcumulado = 0;
+        }
+      }
+
+      // Cálculo matemático impecable del saldo restante basado en los abonos reales del cliente
+      const saldoNetoPendiente = valorTotalVenta - totalAbonadoAcumulado;
+
+      // ==========================================
+      // 4. MAQUETACIÓN GRÁFICA DEL PDF (FORMATO A6)
+      // ==========================================
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: [105, 148]
+      });
+
+      // MARCO VERDE OLIVA CORPORATIVO
+      doc.setDrawColor(112, 173, 71); 
+      doc.setLineWidth(0.8);
+      doc.rect(4, 4, 97, 140);
+
+      // LOGO
+      try {
+        doc.addImage('/Logopapel.png', 'PNG', 42.5, 6, 20, 20);
+      } catch (e) {}
+
+      // ENCABEZADOS
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(60, 60, 60);
+      doc.text(`REMISIÓN N°: ${nRemision}`, 6, 11);
+
+      doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(40, 80, 40);
+      doc.text("ESTADO DE CUENTA DE CARTERA", 52.5, 29, { align: "center" });
+
+      // BLOQUE INFORMATIVO GENERAL CEBRA
+      const yBase = 33;
+      const altoFila = 5;
+      const yOffset = 3.5;
+
+      doc.setFillColor(242, 242, 242);
+      doc.rect(6, yBase, 93, altoFila, 'F');
+      doc.rect(6, yBase + (altoFila * 2), 93, altoFila, 'F');
+      
+      doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.2);
+      doc.rect(6, yBase, 93, altoFila * 3); 
+      doc.line(6, yBase + altoFila, 99, yBase + altoFila);
+      doc.line(6, yBase + (altoFila * 2), 99, yBase + (altoFila * 2));
+      doc.line(52, yBase, 52, yBase + altoFila);
+
+      doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(0);
+      doc.text("FECHA DESPACHO:", 8, yBase + yOffset);
+      doc.setFont("helvetica", "normal"); doc.text(`${fechaDespacho}`, 34, yBase + yOffset);
+
+      doc.setFont("helvetica", "bold"); doc.text("INVERNADERO:", 54, yBase + yOffset);
+      doc.setFont("helvetica", "normal"); doc.text(`${invernaderoNom.toUpperCase()}`, 75, yBase + yOffset);
+
+      doc.setFont("helvetica", "bold"); doc.text("CLIENTE:", 8, yBase + altoFila + yOffset);
+      doc.setFont("helvetica", "normal"); doc.text(`${clienteNom.toUpperCase()}`, 22, yBase + altoFila + yOffset);
+
+      doc.setFont("helvetica", "bold"); doc.text("NIT / CC:", 8, yBase + (altoFila * 2) + yOffset);
+      doc.setFont("helvetica", "normal"); doc.text(`${clienteNit}`, 22, yBase + (altoFila * 2) + yOffset);
+
+      // --- TABLA 1: PRODUCTOS DESPACHADOS REALES DESDE LA BASE DE DATOS ---
+      autoTable(doc, {
+        startY: yBase + (altoFila * 3) + 3,
+        margin: { left: 6, right: 6 },
+        head: [["PRODUCTO DESPACHADO", "CANTIDAD", "SUBTOTAL"]],
+        body: bodyProductos,
+        theme: 'grid',
+        styles: { font: 'helvetica', fontSize: 7, cellPadding: 1.5, lineWidth: 0.1, lineColor: [210, 210, 210] },
+        headStyles: { fillColor: [112, 173, 71], textColor: [255, 255, 255], halign: 'center', fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 45, halign: 'left' },
+          1: { cellWidth: 25, halign: 'center' },
+          2: { cellWidth: 23, halign: 'right' }
+        }
+      });
+
+      // Línea de valor original de carga
+      const yTotalVenta = doc.lastAutoTable.finalY + 4;
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+      doc.text("VALOR TOTAL VENTA:", 53, yTotalVenta);
+      doc.text(`$${valorTotalVenta.toLocaleString('es-CO')}`, 99, yTotalVenta, { align: 'right' });
+
+      // --- TABLA 2: HISTORIAL DE PAGOS / RECAUDOS REALES ---
+      autoTable(doc, {
+        startY: yTotalVenta + 2,
+        margin: { left: 6, right: 6 },
+        head: [["N°", "FECHA PAGO", "DETALLE / REFERENCIA", "VALOR ABONO"]],
+        body: bodyAbonos,
+        theme: 'grid',
+        styles: { font: 'helvetica', fontSize: 7, cellPadding: 1.5, lineWidth: 0.1, lineColor: [210, 210, 210] },
+        headStyles: { fillColor: [40, 80, 40], textColor: [255, 255, 255], halign: 'center', fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 8, halign: 'center' },
+          1: { cellWidth: 20, halign: 'center' },
+          2: { cellWidth: 42, halign: 'left' },
+          3: { cellWidth: 23, halign: 'right' }
+        }
+      });
+
+      // --- SECCIÓN 3: TOTALES Y BALANCES CORREGIDOS ---
+      const yBalance = doc.lastAutoTable.finalY + 4;
+      
+      doc.setFillColor(245, 245, 245);
+      doc.rect(48, yBalance, 51, 11, 'F');
+      doc.setDrawColor(200, 200, 200); doc.rect(48, yBalance, 51, 11);
+      doc.line(48, yBalance + 5.5, 99, yBalance + 5.5);
+
+      doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setTextColor(0);
+      doc.text("TOTAL ABONADO:", 50, yBalance + 4);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(0, 100, 0); 
+      doc.text(`$${totalAbonadoAcumulado.toLocaleString('es-CO')}`, 97, yBalance + 4, { align: 'right' });
+
+      doc.setFont("helvetica", "bold"); doc.setTextColor(0);
+      doc.text("SALDO PENDIENTE:", 50, yBalance + 9.5);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(180, 0, 0); 
+      doc.text(`$${saldoNetoPendiente.toLocaleString('es-CO')}`, 97, yBalance + 9.5, { align: 'right' });
+
+      // Notas finales al pie
+      const yNotas = yBalance + 14;
+      doc.setDrawColor(210, 210, 210); doc.rect(6, yNotas, 93, 7);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(6.5);
+      doc.text("NOTA:", 7, yNotas + 4.5);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${String(notaRef).toUpperCase()}`, 15, yNotas + 4.5, { maxWidth: 82 });
+
+      doc.save(`ESTADO_CUENTA_REM_${nRemision}.pdf`);
+
+    } catch (err) {
+      console.error("Error crítico en generación de PDF:", err);
+    }
+  };
+// -- FIN FUNCION IMPRIMIRRE RECIBO CARTERA
 
   // 1. Obtener la remisión seleccionada actualmente
   const remisionSeleccionada = datosDespachos?.find(r => r.id?.toString() === pagoForm.despacho_id?.toString());
@@ -28,11 +421,33 @@ export default function Pagos({
   ) || [];
 
   return (
-    <div className="space-y-6 pb-20">
-      {/* FORMULARIO DE REGISTRO */}
-      <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-blue-700">
-        <h3 className="font-black text-blue-900 uppercase text-sm mb-6 italic">💳 Registro de Pagos</h3>
-        
+  <div className="space-y-6 pb-20">
+    {/* FORMULARIO DE REGISTRO */}
+    <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-blue-700">
+      <h3 className="font-black text-blue-900 uppercase text-sm mb-6 italic">💳 Registro de Pagos</h3>
+      
+      {/* SECCIÓN DEL HISTORIAL MODIFICADA: COLUMNA Y ALINEADO A LA IZQUIERDA */}
+      <div className="p-5 bg-gray-200 border-b-2 border-gray-400 flex flex-col gap-3">
+        <h3 className="font-black text-slate-800 text-xs uppercase tracking-widest">
+          Historial Detallado de Pagos
+        </h3>
+
+        <div className="flex justify-start">
+          <button
+            onClick={exportarPagosAExcel}
+            className="px-4 py-2 bg-emerald-700 text-white font-black italic rounded-xl shadow-md hover:bg-emerald-800 transition-colors flex items-center gap-2 text-xs uppercase tracking-wider"
+          >
+            📊 Exportar a Excel
+          </button>
+        </div>
+      </div>
+
+      {/* Aquí continúa el resto de tu tabla o contenido inferior... */}
+
+
+
+
+
         <form onSubmit={guardarPago} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -212,7 +627,23 @@ export default function Pagos({
                   {formatoPesos(saldoActual)}
                 </p>
               </div>
+             {/* === BOTÓN DE IMPRESIÓN UBICADO EN EL RECUADRO ROJO === */}
+    
+
             </div>
+                   
+        <button
+  onClick={async () => {
+    // Llama de forma asíncrona pasándole la remisión seleccionada en la pantalla
+    await imprimirReciboCarteraPDF(remisionSeleccionada || pagoSeleccionado);
+  }}
+  className="px-5 py-3 bg-red-700 hover:bg-red-800 text-white font-black italic rounded-xl shadow-lg transition-colors flex items-center gap-2 text-xs uppercase tracking-wider border border-red-600"
+>
+  🖨️ PDF Remisión
+</button>
+                      
+    
+    
           </div>
         </div>
       ) : (
