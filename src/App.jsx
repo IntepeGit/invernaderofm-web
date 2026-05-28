@@ -63,7 +63,8 @@ function App() {
   //const [gastoForm, setGastoForm] = useState({ id_editando: null, descripcion: '', categoria: 'Mano de obra', monto: '', invernadero_id: '', proveedor_id: '', numero_comprobante: '', nota: '', fecha: new Date().toISOString().split('T')[0] })
   const [gastoForm, setGastoForm] = useState({ id_editando: null, descripcion: '', categoria: 'Mano de obra', monto: '', invernadero_id: '', proveedor_id: '', numero_comprobante: '', nota: '', fecha: new Date().toISOString().split('T')[0], cantidad: '', precio_unitario: '', unidad_medida: 'Unidad' })
   const [invForm, setInvForm] = useState({ nombre: '', cultivo: '', variedad: '', largo: '', ancho: '', siembra: '', cosecha: '', estado: 'Activo', descripcion: '' })
-  const [cliForm, setCliForm] = useState({ nombre: '', nit: '', tel: '', dir: '', ciudad: '', nota: '', email: '' })
+  //const [cliForm, setCliForm] = useState({ nombre: '',                    nit: '', tel: '', dir: '', ciudad: '', nota: '', email: '' })
+  const [cliForm, setCliForm] = useState({ id_editando: null, nombre: '', nit: '', tel: '', dir: '', ciudad: '', nota: '', email: '' })
   const [provForm, setProvForm] = useState({ nombre: '', nit: '', tel: '', dir: '', ciudad: '', nota: '' })
   const [pagoForm, setPagoForm] = useState({ id_editando: null, cliente_id: '', venta_id: '', monto: '', metodo_pago: 'Efectivo', fecha_pago: new Date().toISOString().split('T')[0], nota: '' })
   
@@ -207,47 +208,57 @@ const prepararEdicionDespacho = async (venta) => {
 
 
 // DESPUÉS DE ESTO DEBE SEGUIR: async function cargarTodo() { ...
-  
   async function cargarTodo() {
-    if (!session) return;
-    //const { data: v } = await supabase.from('ventas').select('*, clientes(*), invernaderos(*), detalle_ventas(*)')
-    const { data: v, error: ev } = await supabase.from('ventas').select('*, clientes(*), invernaderos(*), detalle_ventas(*)').order('fecha_venta', { ascending: false });
-    const { data: egresosData, error: egresosError } = await supabase.from('egresos').select('*, invernaderos(*), proveedores(*)').order('fecha_gasto', { ascending: false });
-    const { data: e } = await supabase.from('egresos').select('*, invernaderos(*), proveedores(*)')
-    const { data: i } = await supabase.from('invernaderos').select('*')
-    const { data: c } = await supabase.from('clientes').select('*')
-    const { data: p } = await supabase.from('proveedores').select('*')
-    const { data: pagos } = await supabase.from('pagos').select('*, clientes(nombre_completo), ventas(numero_remision)')
-
-    setDatosDespachos(v || []);
-    setDatosEgresos(e || []);
-    setDatosPagos(pagos || []);
-    setListaInvernaderos(i || []);
-    setListaClientes(c || []);
-    setListaProveedores(p || []);
-
-    const resumen = i?.map(inv => {
-  const egr = e?.filter(x => x.invernadero_id === inv.id).reduce((s, x) => s + (x.monto || 0), 0) || 0;
-  const ventasInv = v?.filter(x => x.invernadero_id === inv.id) || [];
-  const ing = ventasInv.reduce((s, x) => s + (x.total_venta || 0), 0);
+  if (!session) return;
   
-  // Lógica de Cartera
-  const idsVentas = ventasInv.map(venta => venta.id);
-  const pagosVentas = pagos?.filter(p => idsVentas.includes(p.despacho_id)) || [];
-  const recaudado = pagosVentas.reduce((s, p) => s + (p.monto || 0), 0);
-  const carteraPendiente = ing - recaudado;
+  // Consultas principales a Supabase
+  const { data: v, error: ev } = await supabase.from('ventas').select('*, clientes(*), invernaderos(*), detalle_ventas(*)').order('fecha_venta', { ascending: false });
+  const { data: egresosData, error: egresosError } = await supabase.from('egresos').select('*, invernaderos(*), proveedores(*)').order('fecha_gasto', { ascending: false });
+  const { data: e } = await supabase.from('egresos').select('*, invernaderos(*), proveedores(*)');
+  
+  // TRAEMOS TODOS (Sin filtros en la Query para que ConfigInv pueda ver los inactivos)
+  const { data: i } = await supabase.from('invernaderos').select('*');  
 
-  // UN SOLO RETURN con todos los datos necesarios
-  return { 
-    name: inv.nombre, 
-    Ingresos: ing, 
-    Gastos: egr, 
-    Utilidad: ing - egr,
-    Cartera: carteraPendiente > 0 ? carteraPendiente : 0
-  };
-});
-    setBalancesGrafica(resumen || [])
-  }
+  const { data: c } = await supabase.from('clientes').select('*');
+  const { data: p } = await supabase.from('proveedores').select('*');
+  const { data: pagos } = await supabase.from('pagos').select('*, clientes(nombre_completo), ventas(numero_remision)');
+
+  // === SEPARACIÓN DE LOGICA ===
+  // Filtramos localmente los que van a usar Despachos, Gastos y las Gráficas
+  const invernaderosActivos = i?.filter(inv => inv.activo !== false) || [];
+
+  // Inyección en los estados de React
+  setDatosDespachos(v || []);
+  setDatosEgresos(e || []);
+  setDatosPagos(pagos || []);
+  
+  // CRUCIAL: Pasamos la lista COMPLETA para que ConfigInv los muestre todos
+  setListaInvernaderos(i || []); 
+  
+  setListaClientes(c || []);
+  setListaProveedores(p || []);
+
+  // El Dashboard (Gráficas) se calcula ÚNICAMENTE con los invernaderos activos
+  const resumen = invernaderosActivos.map(inv => {
+    const egr = e?.filter(x => x.invernadero_id === inv.id).reduce((s, x) => s + (x.monto || 0), 0) || 0;
+    const ventasInv = v?.filter(x => x.invernadero_id === inv.id) || [];
+    const ing = ventasInv.reduce((s, x) => s + (x.total_venta || 0), 0);
+    
+    const idsVentas = ventasInv.map(venta => venta.id);
+    const pagosVentas = pagos?.filter(p => idsVentas.includes(p.despacho_id)) || [];
+    const recaudado = pagosVentas.reduce((s, p) => s + (p.monto || 0), 0);
+    const carteraPendiente = ing - recaudado;
+
+    return { 
+      name: inv.nombre, 
+      Ingresos: ing, 
+      Gastos: egr, 
+      Utilidad: ing - egr,
+      Cartera: carteraPendiente > 0 ? carteraPendiente : 0
+    };
+  });
+  setBalancesGrafica(resumen || []);
+}  
 
   // Validar duplicado en tiempo real mientras el usuario escribe
 useEffect(() => {
@@ -775,7 +786,8 @@ const prepararEdicion = (despacho) => {
               despachoForm={despachoForm}
               setDespachoForm={setDespachoForm} 
               listaClientes={listaClientes}
-              listaInvernaderos={listaInvernaderos} 
+              //listaInvernaderos={listaInvernaderos} 
+              listaInvernaderos={listaInvernaderos.filter(inv => inv.activo !== false)}
               actualizarFilaDespacho={actualizarFilaDespacho}
               guardarDespachoCompleto={guardarDespachoCompleto} 
               datosDespachos={datosDespachos} 
@@ -786,6 +798,8 @@ const prepararEdicion = (despacho) => {
               prepararEdicion={prepararEdicion}
               prepararEdicionDespacho={prepararEdicionDespacho}
               imprimirPDF={imprimirPDF}
+              cargarTodo={cargarTodo}
+              supabase={supabase}
             />
           )}
 
@@ -808,7 +822,8 @@ const prepararEdicion = (despacho) => {
             <Gastos 
               gastoForm={gastoForm}
               setGastoForm={setGastoForm} 
-              listaInvernaderos={listaInvernaderos}
+              //listaInvernaderos={listaInvernaderos}
+              listaInvernaderos={listaInvernaderos.filter(inv => inv.activo !== false)}
               listaProveedores={listaProveedores} 
               mostrarAlerta={mostrarAlerta}
               cargarTodo={cargarTodo} 
