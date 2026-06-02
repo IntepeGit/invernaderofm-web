@@ -62,7 +62,7 @@ export default function Despachos({
       .trim();
   };
 
-  // --- 🖨️ NUEVA FUNCIÓN LOCAL: IMPRESIÓN BLINDADAAA DE REMISIONES ---
+  // --- 🖨️ NUEVA FUNCIÓN LOCAL: IMPRESIÓN BLINDADA DE REMISIONES ---
   const ejecutarImpresionDespachoLocal = (d) => {
     try {
       if (!d) return;
@@ -184,11 +184,7 @@ export default function Despachos({
           
           <form onSubmit={guardarDespachoCompleto} className="space-y-4">
             
-<<<<<<< HEAD
             {/* CAMPO NÚMERO DE REMISIÓN CON AUTO-CONSECUTIVO */}
-=======
-            {/* CAMPO NÚMERO DE REMISIÓN */}
->>>>>>> 60f0ca8e301cde5e6425641b2afb8e3f0a9297b9
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Número de Remisión</label>
               <input
@@ -215,11 +211,7 @@ export default function Despachos({
               <input 
                 type="date" 
                 className="w-full border-2 p-2.5 rounded-xl font-bold text-sm bg-white outline-none focus:border-green-700" 
-<<<<<<< HEAD
                 value={despachoForm.fecha_venta || ''} 
-=======
-                value={despachoForm.fecha_venta} 
->>>>>>> 60f0ca8e301cde5e6425641b2afb8e3f0a9297b9
                 onChange={e => setDespachoForm({...despachoForm, fecha_venta: e.target.value})} 
                 required 
               />
@@ -230,11 +222,7 @@ export default function Despachos({
               <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Invernadero (Origen)</label>
               <select 
                 className="w-full border-2 p-2.5 rounded-xl font-bold text-xs bg-white outline-none focus:border-green-700"
-<<<<<<< HEAD
                 value={despachoForm.invernadero_id || ''}
-=======
-                value={despachoForm.invernadero_id}
->>>>>>> 60f0ca8e301cde5e6425641b2afb8e3f0a9297b9
                 onChange={e => setDespachoForm({...despachoForm, invernadero_id: e.target.value})}
                 required
               >
@@ -248,11 +236,7 @@ export default function Despachos({
               <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Cliente (Destino)</label>
               <select 
                 className="w-full border-2 p-2.5 rounded-xl font-bold text-xs bg-white outline-none focus:border-green-700"
-<<<<<<< HEAD
                 value={despachoForm.cliente_id || ''}
-=======
-                value={despachoForm.cliente_id}
->>>>>>> 60f0ca8e301cde5e6425641b2afb8e3f0a9297b9
                 onChange={e => setDespachoForm({...despachoForm, cliente_id: e.target.value})}
                 required
               >
@@ -265,11 +249,7 @@ export default function Despachos({
             <div className="pt-2 space-y-3 border-t">
               <p className="text-[10px] font-black text-slate-700 uppercase tracking-wider italic">📦 Desglose de Productos</p>
               
-<<<<<<< HEAD
               {despachoForm.filas?.map((fila, index) => (
-=======
-              {despachoForm.filas.map((fila, index) => (
->>>>>>> 60f0ca8e301cde5e6425641b2afb8e3f0a9297b9
                 <div key={index} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2 relative">
                   {despachoForm.filas.length > 1 && (
                     <button 
@@ -287,11 +267,7 @@ export default function Despachos({
                     <input 
                       placeholder="Ej: Tomate Larga Vida" 
                       className="w-full p-2 border bg-white rounded-xl font-bold text-xs outline-none focus:border-green-500" 
-<<<<<<< HEAD
                       value={fila.producto || ''} 
-=======
-                      value={fila.producto} 
->>>>>>> 60f0ca8e301cde5e6425641b2afb8e3f0a9297b9
                       onChange={e => actualizarFilaDespacho(index, 'producto', e.target.value)} 
                       required 
                     />
@@ -304,11 +280,7 @@ export default function Despachos({
                         type="number" 
                         placeholder="0" 
                         className="w-full p-2 border bg-white rounded-xl font-black text-xs text-center outline-none focus:border-green-500" 
-<<<<<<< HEAD
                         value={fila.cantidad || ''} 
-=======
-                        value={fila.cantidad} 
->>>>>>> 60f0ca8e301cde5e6425641b2afb8e3f0a9297b9
                         onChange={e => actualizarFilaDespacho(index, 'cantidad', e.target.value)} 
                         required 
                       />
@@ -317,11 +289,7 @@ export default function Despachos({
                       <label className="text-[8px] font-black text-slate-400 uppercase">Escala</label>
                       <select 
                         className="w-full p-2 border bg-white rounded-xl font-bold text-xs outline-none focus:border-green-500" 
-<<<<<<< HEAD
                         value={fila.escala || ''} 
-=======
-                        value={fila.escala} 
->>>>>>> 60f0ca8e301cde5e6425641b2afb8e3f0a9297b9
                         onChange={e => actualizarFilaDespacho(index, 'escala', e.target.value)} 
                         required
                       >
@@ -371,11 +339,7 @@ export default function Despachos({
           </form>
         </div>
 
-<<<<<<< HEAD
         {/* COLUMNA DERECHA: TABLA HISTÓRICA */}
-=======
-        {/* COLUMNA DERECHA: TABLA HISTÓRICA DE CARGAS (2/3) */}
->>>>>>> 60f0ca8e301cde5e6425641b2afb8e3f0a9297b9
         <div className="lg:col-span-2 bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-200">
           <div className="p-4 bg-slate-800 text-white font-black text-xs uppercase tracking-widest italic flex justify-between items-center">
             <span>Historial Reciente de Cargas</span>
@@ -424,11 +388,7 @@ export default function Despachos({
                     <td className="p-4">
                       <div className="flex gap-1.5 justify-center">
                         <button 
-<<<<<<< HEAD
                           onClick={() => ejecutarImpresionDespachoLocal(d)} 
-=======
-                          onClick={() => imprimirPDF(d)} 
->>>>>>> 60f0ca8e301cde5e6425641b2afb8e3f0a9297b9
                           className="px-2 py-1 bg-slate-800 text-white rounded-lg hover:bg-black transition-colors flex items-center gap-1 border border-slate-900 shadow-md"
                           title="Imprimir PDF"
                         >
