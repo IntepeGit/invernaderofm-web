@@ -709,7 +709,7 @@ const prepararEdicion = (despacho) => {
 };
 
   // --- NUEVA FUNCIÓN DE IMPRESIÓN ---
-// --- COPIAR ESTA FUNnCIÓN DENTRO DE App.jsx ---
+// --- COPIAR ESTA FUNCIÓN DENTRO 4-6 DE App.jsx ---
 
 
   const NavItem = ({ id, label, icon }) => (
