@@ -318,7 +318,7 @@ export default function Gastos({
               onClick={exportarAExcel}
               className="px-3 py-1 bg-emerald-600 text-white font-black rounded-lg shadow-md hover:bg-emerald-700 transition-colors flex items-center gap-1 text-[10px] uppercase tracking-wider"
             >
-              📊 Excel
+              📊 EXPORTAR A EXCEL TOTAL REGISTRO DE GASTOS
             </button>
           </div>
           

@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 export default function Despachos({ 
   despachoForm, 
@@ -25,32 +27,221 @@ export default function Despachos({
 
   // --- ⚙️ AUTOMATIZACIÓN DEL CONSECUTIVO DE REMISIÓN ---
   useEffect(() => {
-    // Solo calculamos el siguiente número si NO estamos editando una remisión existente
     if (!despachoForm.id_editando && datosDespachos && datosDespachos.length > 0) {
-      
-      // Convertimos los números de remisión a enteros para poder evaluar el mayor matemáticamente
       const numeros = datosDespachos.map(d => parseInt(d.numero_remision, 10)).filter(num => !isNaN(num));
-      
       if (numeros.length > 0) {
         const maxRemision = Math.max(...numeros);
         const siguienteRemision = maxRemision + 1;
-        
-        // Solo actualizamos el estado si el número calculado es diferente al que está en pantalla
         if (String(despachoForm.numero_remision) !== String(siguienteRemision)) {
           setDespachoForm(prev => ({
             ...prev,
             numero_remision: String(siguienteRemision),
-            errorDuplicado: false // Limpiamos el error visual de inmediato
+            errorDuplicado: false
           }));
         }
       }
     } else if (!despachoForm.id_editando && (!datosDespachos || datosDespachos.length === 0)) {
-      // Si el historial está completamente vacío, inicializamos por defecto en 1
       if (!despachoForm.numero_remision) {
         setDespachoForm(prev => ({ ...prev, numero_remision: '1' }));
       }
     }
-  }, [datosDespachos, despachoForm.id_editando]); // Se ejecuta al cargar datos o cambiar de modo
+  }, [datosDespachos, despachoForm.id_editando]);
+
+
+  // --- 📊 FUNCIÓN MAESTRA: EXPORTACIÓN DE DESPACHOS A EXCEL SIN DESCUADRES ---
+  const exportarDespachosAExcel = async () => {
+    if (!datosDespachos || datosDespachos.length === 0) {
+      alert("No hay registros de despachos para exportar");
+      return;
+    }
+
+    try {
+      const workbook = new ExcelJS.Workbook();
+
+      // =======================================================
+      // HOJA 1: RESUMEN GENERAL DE REMISIONES
+      // =======================================================
+      const wsResumen = workbook.addWorksheet('Resumen de Remisiones');
+      wsResumen.columns = [
+        { header: 'FECHA DESPACHO', key: 'fecha', width: 16 },
+        { header: 'REMISIÓN N°', key: 'remision', width: 15 },
+        { header: 'INVERNADERO ORIGEN', key: 'inv', width: 22 },
+        { header: 'CLIENTE / DESTINO', key: 'cliente', width: 30 },
+        { header: 'VALOR TOTAL CARGA', key: 'total', width: 22 }
+      ];
+
+      // Mapeamos los datos garantizando simetría matemática total entre hojas
+      datosDespachos.forEach(d => {
+        const numRem = d.numero_remision || 'S/N';
+        const productosImpresos = new Set();
+        let sumatoriaProductosReal = 0;
+
+        // Calculamos el valor real sumando los items únicos que van para la Hoja 2
+        (d.detalle_ventas || []).forEach(item => {
+          const claveUnica = `${numRem}-${String(item.descripcion).trim().toUpperCase()}`;
+          if (productosImpresos.has(claveUnica)) return;
+          productosImpresos.add(claveUnica);
+
+          const c = parseFloat(item.cantidad || 0);
+          const p = parseFloat(item.precio_unitario || item.precio || 0);
+          sumatoriaProductosReal += (c * p);
+        });
+
+        // Si la remisión no tiene productos desglosados, recurre al total macro de la fila
+        const valorFinalCarga = sumatoriaProductosReal > 0 ? sumatoriaProductosReal : parseFloat(d.total_venta || 0);
+
+        wsResumen.addRow({
+          fecha: d.fecha_venta ? String(d.fecha_venta).split('T')[0] : 'S/F',
+          remision: d.numero_remision || 'S/N',
+          inv: (d.invernaderos?.nombre || 'General').toUpperCase(),
+          cliente: (d.clientes?.nombre_completo || 'Particular').toUpperCase(),
+          total: valorFinalCarga
+        });
+      });
+
+      // Fila Contable de Cierre con Fórmula SUM
+      const ultimaFilaResumen = wsResumen.rowCount;
+      const filaTotalResumen = wsResumen.addRow({
+        fecha: '', remision: '', inv: '',
+        cliente: 'TOTAL GENERAL DESPACHOS:',
+        total: { formula: `SUM(E2:E${ultimaFilaResumen})` }
+      });
+
+      // Estilo de encabezado para Hoja 1 (Gris Oscuro Corporativo)
+      wsResumen.getRow(1).height = 24;
+      wsResumen.getRow(1).eachCell(c => {
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+        c.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+        c.alignment = { vertical: 'middle', horizontal: 'center' };
+      });
+
+      // Formateo de filas e inyección de Cebra en Hoja 1
+      wsResumen.eachRow((row, idx) => {
+        if (idx === 1) return;
+        row.height = 20;
+
+        if (idx === wsResumen.rowCount) {
+          row.eachCell(cell => {
+            cell.border = { top: { style: 'thin' }, bottom: { style: 'double' } };
+          });
+          row.getCell('cliente').font = { name: 'Arial', size: 10, bold: true };
+          row.getCell('total').font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF15803D' } };
+          row.getCell('total').numFmt = '"$"#,##0';
+          row.getCell('total').alignment = { horizontal: 'right', vertical: 'middle' };
+          return;
+        }
+
+        const esCebra = idx % 2 === 0;
+        row.eachCell((cell, colNum) => {
+          cell.font = { name: 'Arial', size: 9 };
+          if (esCebra) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+          if (colNum === 5) {
+            cell.numFmt = '"$"#,##0';
+            cell.alignment = { horizontal: 'right', vertical: 'middle' };
+          } else if (colNum === 1 || colNum === 2) {
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          } else {
+            cell.alignment = { horizontal: 'left', vertical: 'middle' };
+          }
+        });
+      });
+      wsResumen.autoFilter = { from: { row: 1, column: 1 }, to: { row: ultimaFilaResumen, column: 5 } };
+
+
+      // =======================================================
+      // HOJA 2: DESGLOSE DETALLADO DE PRODUCTOS POR CARGA
+      // =======================================================
+      const wsDetalle = workbook.addWorksheet('Desglose de Productos');
+      wsDetalle.columns = [
+        { header: 'REMISIÓN N°', key: 'remision', width: 15 },
+        { header: 'PRODUCTO / VARIADED', key: 'prod', width: 28 },
+        { header: 'CANTIDAD', key: 'cant', width: 14 },
+        { header: 'ESCALA', key: 'escala', width: 14 },
+        { header: 'PRECIO UNITARIO', key: 'precio', width: 18 },
+        { header: 'SUBTOTAL ITEM', key: 'subtotal', width: 20 }
+      ];
+
+      datosDespachos.forEach(d => {
+        const numRem = d.numero_remision || 'S/N';
+        const productosImpresos = new Set();
+
+        (d.detalle_ventas || []).forEach(item => {
+          const claveUnica = `${numRem}-${String(item.descripcion).trim().toUpperCase()}`;
+          if (productosImpresos.has(claveUnica)) return;
+          productosImpresos.add(claveUnica);
+
+          const c = parseFloat(item.cantidad || 0);
+          const p = parseFloat(item.precio_unitario || item.precio || 0);
+          wsDetalle.addRow({
+            remision: numRem,
+            prod: String(item.descripcion || '').toUpperCase(),
+            cant: c,
+            escala: String(item.escala || 'Kilo').toUpperCase(),
+            precio: p,
+            subtotal: c * p
+          });
+        });
+      });
+
+      // Fila Contable de Cierre con Fórmula SUM
+      const ultimaFilaDetalle = wsDetalle.rowCount;
+      const filaTotalDetalle = wsDetalle.addRow({
+        remision: '', prod: '', cant: '', escala: '',
+        precio: 'TOTAL CARGAS:',
+        subtotal: { formula: `SUM(F2:F${ultimaFilaDetalle})` }
+      });
+
+      // Estilo de encabezado para Hoja 2 (Verde Agro Corporativo)
+      wsDetalle.getRow(1).height = 24;
+      wsDetalle.getRow(1).eachCell(c => {
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF70AD47' } };
+        c.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+        c.alignment = { vertical: 'middle', horizontal: 'center' };
+      });
+
+      // Formateo de filas e inyección de Cebra en Hoja 2
+      wsDetalle.eachRow((row, idx) => {
+        if (idx === 1) return;
+        row.height = 18;
+
+        if (idx === wsDetalle.rowCount) {
+          row.eachCell(cell => {
+            cell.border = { top: { style: 'thin' }, bottom: { style: 'double' } };
+          });
+          row.getCell('precio').font = { name: 'Arial', size: 10, bold: true };
+          row.getCell('subtotal').font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF15803D' } };
+          row.getCell('subtotal').numFmt = '"$"#,##0';
+          row.getCell('subtotal').alignment = { horizontal: 'right', vertical: 'middle' };
+          return;
+        }
+
+        const esCebra = idx % 2 === 0;
+        row.eachCell((cell, colNum) => {
+          cell.font = { name: 'Arial', size: 9 };
+          if (esCebra) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
+          
+          if (colNum === 5 || colNum === 6) {
+            cell.numFmt = '"$"#,##0';
+            cell.alignment = { horizontal: 'right', vertical: 'middle' };
+          } else if (colNum === 1 || colNum === 3 || colNum === 4) {
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          } else {
+            cell.alignment = { horizontal: 'left', vertical: 'middle' };
+          }
+        });
+      });
+      wsDetalle.autoFilter = { from: { row: 1, column: 1 }, to: { row: ultimaFilaDetalle, column: 6 } };
+
+      // Disparar Guardado de Archivo Binario
+      const buffer = await workbook.xlsx.writeBuffer();
+      const fechaHoy = new Date().toISOString().split('T')[0];
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      saveAs(blob, `REPORTE_DESPACHOS_REMISIO_GENERAL_${fechaHoy}.xlsx`);
+
+    } catch (error) {
+      console.error("Error al exportar Excel de Despachos:", error);
+    }
+  };
 
 
   // --- 💡 FUNCIÓN MÁSCARA: SANITIZAR TEXTO CONTRA EMOJIS ---
@@ -66,13 +257,8 @@ export default function Despachos({
   const ejecutarImpresionDespachoLocal = (d) => {
     try {
       if (!d) return;
-
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [105, 148] });
-
-      doc.setDrawColor(112, 173, 71); 
-      doc.setLineWidth(0.8); 
-      doc.rect(4, 4, 97, 140);
-
+      doc.setDrawColor(112, 173, 71); doc.setLineWidth(0.8); doc.rect(4, 4, 97, 140);
       try { doc.addImage('/Logopapel.png', 'PNG', 42.5, 6, 20, 20); } catch (e) {}
 
       const nRemision = d.numero_remision || 'S/N';
@@ -85,10 +271,7 @@ export default function Despachos({
       const yBase = 33;
       doc.setFillColor(242, 242, 242); doc.rect(6, yBase, 93, 5, 'F'); doc.rect(6, yBase + 10, 93, 5, 'F');
       doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.2); doc.rect(6, yBase, 93, 15);
-      
-      doc.line(6, yBase + 5, 99, yBase + 5); 
-      doc.line(6, yBase + 10, 99, yBase + 10); 
-      doc.line(52, yBase, 52, yBase + 5);
+      doc.line(6, yBase + 5, 99, yBase + 5); doc.line(6, yBase + 10, 99, yBase + 10); doc.line(52, yBase, 52, yBase + 5);
 
       const clienteNom = d.clientes?.nombre_completo || 'PARTICULAR';
       const invernaderoNom = d.invernaderos?.nombre || 'GENERAL';
@@ -96,13 +279,10 @@ export default function Despachos({
       doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.setTextColor(0);
       doc.text("Fecha Despacho:", 7, yBase + 3.5);
       doc.setFont("helvetica", "normal"); doc.text(String(d.fecha_venta || '').split('T')[0], 28, yBase + 3.5);
-      
       doc.setFont("helvetica", "bold"); doc.text("Origen Bloque:", 53, yBase + 3.5);
       doc.setFont("helvetica", "normal"); doc.text(limpiarTextoParaPDF(invernaderoNom).toUpperCase(), 71, yBase + 3.5);
-      
       doc.setFont("helvetica", "bold"); doc.text("Cliente / Destino:", 7, yBase + 8.5);
       doc.setFont("helvetica", "normal"); doc.text(limpiarTextoParaPDF(clienteNom).toUpperCase(), 28, yBase + 8.5);
-      
       doc.setFont("helvetica", "bold"); doc.text("NIT / CC:", 7, yBase + 13.5);
       doc.setFont("helvetica", "normal"); doc.text(d.clientes?.nit_cc || 'N/A', 19, yBase + 13.5);
 
@@ -114,19 +294,11 @@ export default function Despachos({
       ]);
 
       autoTable(doc, {
-        startY: yBase + 18, 
-        margin: { left: 6, right: 6 },
-        head: [["Descripción Producto", "Cantidad", "Precio Unit.", "Subtotal"]], 
-        body: filasTabla, 
-        theme: 'grid',
+        startY: yBase + 18, margin: { left: 6, right: 6 },
+        head: [["Descripción Producto", "Cantidad", "Precio Unit.", "Subtotal"]], body: filasTabla, theme: 'grid',
         styles: { font: 'helvetica', fontSize: 6.5, cellPadding: 1.5, lineWidth: 0.1, lineColor: [210, 210, 210] },
         headStyles: { fillColor: [112, 173, 71], textColor: [255, 255, 255], halign: 'center', fontStyle: 'bold' },
-        columnStyles: { 
-          0: { cellWidth: 40, halign: 'left' }, 
-          1: { cellWidth: 18, halign: 'center' }, 
-          2: { cellWidth: 17, halign: 'right' }, 
-          3: { cellWidth: 18, halign: 'right' } 
-        }
+        columnStyles: { 0: { cellWidth: 40, halign: 'left' }, 1: { cellWidth: 18, halign: 'center' }, 2: { cellWidth: 17, halign: 'right' }, 3: { cellWidth: 18, halign: 'right' } }
       });
 
       const yTotal = doc.lastAutoTable.finalY + 6;
@@ -142,13 +314,11 @@ export default function Despachos({
       doc.text("RECIBIDO CONFORME (CLIENTE)", 76, yFirmas + 3, { align: "center" });
 
       doc.save(`REM_DESPACHO_N_${nRemision}_${clienteNom.replace(/ /g, "_")}.pdf`);
-
     } catch (error) {
       console.error("Error crítico de rendering jsPDF:", error);
     }
   };
 
-  // Cálculo del gran total del despacho en tiempo real
   const totalFormulario = (despachoForm?.filas || []).reduce((acc, fila) => {
     return acc + (parseFloat(fila.cantidad || 0) * parseFloat(fila.precio || 0));
   }, 0);
@@ -183,8 +353,6 @@ export default function Despachos({
           </div>
           
           <form onSubmit={guardarDespachoCompleto} className="space-y-4">
-            
-            {/* CAMPO NÚMERO DE REMISIÓN CON AUTO-CONSECUTIVO */}
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Número de Remisión</label>
               <input
@@ -205,7 +373,6 @@ export default function Despachos({
               )}
             </div>
 
-            {/* FECHA DESPACHO */}
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Fecha Despacho</label>
               <input 
@@ -217,7 +384,6 @@ export default function Despachos({
               />
             </div>
 
-            {/* INVERNADERO ORIGEN */}
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Invernadero (Origen)</label>
               <select 
@@ -231,7 +397,6 @@ export default function Despachos({
               </select>
             </div>
 
-            {/* CLIENTE DESTINO */}
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Cliente (Destino)</label>
               <select 
@@ -245,7 +410,6 @@ export default function Despachos({
               </select>
             </div>
 
-            {/* SECCIÓN MULTIPRODUCTO DINÁMICA */}
             <div className="pt-2 space-y-3 border-t">
               <p className="text-[10px] font-black text-slate-700 uppercase tracking-wider italic">📦 Desglose de Productos</p>
               
@@ -341,9 +505,16 @@ export default function Despachos({
 
         {/* COLUMNA DERECHA: TABLA HISTÓRICA */}
         <div className="lg:col-span-2 bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-200">
-          <div className="p-4 bg-slate-800 text-white font-black text-xs uppercase tracking-widest italic flex justify-between items-center">
+          
+          <div className="p-4 bg-slate-800 text-white font-black text-xs uppercase tracking-widest italic flex flex-col sm:flex-row justify-between items-center gap-2">
             <span>Historial Reciente de Cargas</span>
-            <span className="text-[10px] bg-green-700 px-2 py-0.5 rounded-md">Despachos</span>
+            
+            <button
+              onClick={exportarDespachosAExcel}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl shadow-md transition-all flex items-center gap-2 text-[10px] uppercase tracking-wider border border-emerald-500 cursor-pointer"
+            >
+              📊 EXPORTAR A EXCEL TOTAL REGISTRO DE DESPACHOS
+            </button>
           </div>
           
           <div className="overflow-x-auto">
