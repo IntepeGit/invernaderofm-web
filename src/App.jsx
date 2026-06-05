@@ -838,13 +838,14 @@ const prepararEdicion = (despacho) => {
           )}  
 
           {tab === 'reporte' && (
-            <ReporteVentas 
-              listaInvernaderos={listaInvernaderos}
-              datosDespachos={datosDespachos}
-              datosEgresos={datosEgresos}
-              datosPagos={datosPagos}
-            />
-          )}
+  <ReporteVentas 
+    listaInvernaderos={listaInvernaderos}
+    datosDespachos={datosDespachos}
+    datosEgresos={datosEgresos}
+    datosPagos={datosPagos}
+    balancesGrafica={balancesGrafica} // 🌟 LE PASAMOS LOS BALANCES PROCESADOS DEL DASHBOARD
+  />
+)}
 
           {/* === COMPONENTE CENTRAL DE INVENTARIO CONECTADO === */}
           {tab === 'inventario' && (

@@ -255,15 +255,11 @@ export default function Pagos({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* COLUMNA IZQUIERDA: FORMULARIO DE RECAUDO (1/3) */}
-        <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-blue-700 h-fit">
-          <div className="flex justify-between items-center mb-5 border-b pb-3">
+        <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-blue-700 h-fit space-y-5">
+          
+          {/* 🌟 ENCABEZADO LIMPIO SIN EL MINIBOTÓN FLOTANTE */}
+          <div className="flex justify-between items-center border-b pb-3">
             <h3 className="font-black text-slate-800 uppercase text-xs italic">💳 Registro de Pagos</h3>
-            <button
-              onClick={exportarPagosAExcel}
-              className="px-2.5 py-1 bg-emerald-600 text-white font-black rounded-lg shadow-md hover:bg-emerald-700 transition-colors flex items-center gap-1 text-[9px] uppercase tracking-wider"
-            >
-              📊 Excel
-            </button>
           </div>
 
           <form onSubmit={guardarPago} className="space-y-4">
@@ -352,6 +348,16 @@ export default function Pagos({
               {pagoForm.id_editando ? '💾 Actualizar Abono' : '💰 Registrar Abono'}
             </button>
           </form>
+
+          {/* 🌟 SECCIÓN REUBICADA: BOTÓN MAESTRO DE EXPORTACIÓN GENERAL */}
+          <div className="pt-2 border-t border-slate-100">
+            <button
+              onClick={exportarPagosAExcel}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-[10px] uppercase tracking-wider border border-emerald-500 cursor-pointer"
+            >
+              📊 EXPORTAR A EXCEL TOTAL REGISTRO DE PAGOS
+            </button>
+          </div>
         </div>
 
         {/* COLUMNA DERECHA: DETALLE, HISTORIAL Y BALANCES (2/3) */}
