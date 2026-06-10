@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
-export default function Cosecha({ mostrarAlerta, listaInvernaderos }) {
+// 🌟 REPARADO: Ahora recibe la propiedad 'userRole' en la cabecera del componente
+export default function Cosecha({ mostrarAlerta, listaInvernaderos, userRole }) {
   // Estados para datos de la tabla e historial
   const [registrosCosecha, setRegistrosCosecha] = useState([]);
   const [cargando, setCargando] = useState(false);
@@ -304,7 +305,16 @@ export default function Cosecha({ mostrarAlerta, listaInvernaderos }) {
                         {item.cantidad} <span className="text-[10px] text-gray-400 font-normal">{item.unidad_medida}</span>
                       </td>
                       <td className="p-3 text-center">
-                        <button onClick={() => eliminarRegistroCosecha(item.id)} className="p-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 shadow-sm transition-all active:scale-95" title="Eliminar registro">🗑️</button>
+                        {/* 👑 CONTROL DE ACCESO: La papelera de eliminación solo es visible para el Administrador */}
+                        {userRole === 'admin' && (
+                          <button 
+                            onClick={() => eliminarRegistroCosecha(item.id)} 
+                            className="p-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 shadow-sm transition-all active:scale-95" 
+                            title="Eliminar registro"
+                          >
+                            🗑️
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))

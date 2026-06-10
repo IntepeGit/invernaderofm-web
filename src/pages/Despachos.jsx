@@ -12,9 +12,16 @@ export default function Despachos({
   actualizarFilaDespacho, 
   guardarDespachoCompleto, 
   datosDespachos,
+  datosPagos,
+  mostrarAlerta,
+  guardarDespacho,
+  eliminarDespacho, 
   prepararEdicion, 
+  prepararEdicionDespacho,
   imprimirPDF, 
-  eliminarDespacho 
+  cargarTodo,
+  supabase,
+  userRole // 🌟 Al estar mapeadas todas las anteriores, React ahora sí leerá 'admin' u 'operario'
 }) {
   
   const opcionesEscala = ["Kilo", "Bulto", "Caja", "Unidad", "Gramos", "Canastilla"];
@@ -565,13 +572,16 @@ export default function Despachos({
                         >
                           <span className="text-[11px]">🖨️</span><span className="text-[9px] font-black tracking-wider">PDF</span>
                         </button>
-                        <button 
-                          onClick={() => eliminarDespacho(d.id)}
-                          className="p-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors shadow-md"
-                          title="Eliminar Remisión"
-                        >
-                          🗑️
-                        </button>
+                        {/* 👑 CONTROL INTERNO: Solo el administrador puede ver y usar la papelera */}
+                          {userRole === 'admin' && (
+                            <button 
+                              onClick={() => eliminarDespacho(d.id)}
+                              className="p-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors shadow-md"
+                              title="Eliminar Remisión"
+                            >
+                              🗑️
+                            </button>
+                          )}
                       </div>
                     </td>
                   </tr>
