@@ -202,7 +202,7 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
       ];
 
       nominaAExportar.forEach(n => {
-        const operario = n.nomina_trabajadores?.nombre_completo || n.tipo_labor || 'OPERARIO GRANJA';
+        const operario = n.nomina_trabajadores?.nombre_completo || n.tipo_labor || 'OPERARIO INVERNADERO';
         wsManoObra.addRow({
           fechaMO: n.fecha_pago || n.fecha || '',
           invNombre: (n.invernaderos?.nombre || 'General / Administrativo').toUpperCase(),

@@ -269,7 +269,7 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
     doc.text("Fecha Liquidación:", 7, yBase + 3.5);
     doc.setFont("helvetica", "normal"); doc.text(fechaHoy, 30, yBase + 3.5);
     doc.setFont("helvetica", "bold"); doc.text("Invernadero:", 53, yBase + 3.5);
-    doc.setFont("helvetica", "normal"); doc.text("VARIOS / GRANJA", 69, yBase + 3.5);
+    doc.setFont("helvetica", "normal"); doc.text("VARIOS / INVERNADERO", 69, yBase + 3.5);
     doc.setFont("helvetica", "bold"); doc.text("Colaborador:", 7, yBase + 8.5);
     doc.setFont("helvetica", "normal"); doc.text(item.nombre, 23, yBase + 8.5);
     doc.setFont("helvetica", "bold"); doc.text("NIT / CC:", 7, yBase + 13.5);
@@ -370,7 +370,7 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
                   <div>
                     <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Invernadero</label>
                     <select className="w-full border-2 p-2.5 rounded-xl font-bold bg-white text-xs outline-none focus:border-green-800" value={formJornal.invernadero_id} onChange={e => setFormJornal({...formJornal, invernadero_id: e.target.value})}>
-                      <option value="">GENERAL / TODA LA GRANJA</option>
+                      <option value="">GENERAL / TODA EL INVERNADERO</option>
                       {invernaderosActivos.map(inv => <option key={inv.id} value={inv.id}>{inv.nombre?.toUpperCase()}</option>)}
                     </select>
                   </div>

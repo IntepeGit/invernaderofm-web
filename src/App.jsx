@@ -547,7 +547,7 @@ function App() {
   
             {/* 🎯 ENCABEZADO MEJORADO CON INDICADOR DE ROL EN PANTALLA */}
             <div className="p-6 text-center border-b border-green-800 flex flex-col items-center justify-center gap-2">
-              <h2 className="text-white font-black text-2xl tracking-tighter">🚜 GRANJA WP</h2>
+              <h2 className="text-white font-black text-2xl tracking-tighter">🚜 INVERNADERO FM</h2>
               
               {userRole ? (
                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-inner ${

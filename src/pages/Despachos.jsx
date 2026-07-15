@@ -317,7 +317,7 @@ export default function Despachos({
       doc.setDrawColor(150); doc.setLineWidth(0.2);
       doc.line(8, yFirmas, 48, yFirmas); doc.line(56, yFirmas, 96, yFirmas);
       doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.setTextColor(50);
-      doc.text("DESPACHADO POR (GRANJA)", 28, yFirmas + 3, { align: "center" });
+      doc.text("DESPACHADO POR (INVERNADERO)", 28, yFirmas + 3, { align: "center" });
       doc.text("RECIBIDO CONFORME (CLIENTE)", 76, yFirmas + 3, { align: "center" });
 
       doc.save(`REM_DESPACHO_N_${nRemision}_${clienteNom.replace(/ /g, "_")}.pdf`);

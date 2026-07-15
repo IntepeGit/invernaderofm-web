@@ -34,7 +34,7 @@ export default function Login({ setSession }) {
     <div className="min-h-screen flex items-center justify-center bg-green-900 p-4">
       <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md">
         <div className="text-center mb-8">
-          <h2 className="text-3xl font-black text-green-900">GRANJA WP</h2>
+          <h2 className="text-3xl font-black text-green-900">INVERNADERO FM</h2>
           <p className="text-gray-400 text-xs uppercase font-bold tracking-widest mt-2">Acceso al Sistema</p>
         </div>
 
