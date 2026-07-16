@@ -15,7 +15,7 @@ export default function Gastos({
   eliminarGasto,   
   imprimirGastoPDF 
 }) {
-  const categorias = ["Mano de obra", "Insumo Agricola", "Flete", "Mto (Mantenimiento)", "S.Publicos", "Arriendos", "Quincena", "Otros"];
+  const categorias = ["Mano de obra", "Insumo Agricola", "Flete", "Mto (Mantenimiento)", "S.Publicos", "Plantas", "Plasticos", "Viaticos","Arriendos", "Quincena", "Otros"];
   const unidades = ["Canastilla", "Kilo", "Bulto", "Litro", "Jornal", "Unidad", "Hora", "Otra", "Caja", "Garrafa", "Galon"];
 
   // Formateador de moneda colombiana estricto para visualización estática
@@ -44,7 +44,45 @@ export default function Gastos({
     }
   }, [gastoForm.cantidad, gastoForm.precio_unitario, setGastoForm]);
 
-  // --- FUNCIÓN PARA EXPORTAR GASTOS A EXCEL ---
+  // Preparar edición cargando los datos al formulario izquierdo
+  const prepararEdicion = (g) => {
+    setGastoForm({
+      id_editando: g.id,
+      invernadero_id: g.invernadero_id || '',
+      descripcion: g.descripcion || '',
+      monto: g.monto || 0,
+      categoria: g.categoria || 'Insumo Agricola',
+      proveedor_id: g.proveedor_id || '',
+      numero_comprobante: g.numero_comprobante || '',
+      nota: g.nota || '',
+      fecha: g.fecha_gasto || g.fecha || new Date().toISOString().split('T')[0],
+      cantidad: g.cantidad || '',
+      unidad_medida: g.unidad_medida || 'Unidad',
+      precio_unitario: g.precio_unitario || ''
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Limpiar/Cancelar edición
+  const cancelarEdicion = () => {
+    setGastoForm({ 
+      id_editando: null,
+      invernadero_id: '', 
+      descripcion: '', 
+      monto: 0, 
+      categoria: 'Insumo Agricola', 
+      proveedor_id: '', 
+      numero_comprobante: '', 
+      nota: '', 
+      fecha: new Date().toISOString().split('T')[0], 
+      cantidad: '', 
+      unidad_medida: 'Unidad', 
+      precio_unitario: '' 
+    });
+  };
+
+  // --- FUNCIÓN PARA EXPORTAR GASTOS A EXCEL (Con tonos azules modernos) ---
+  // --- FUNCIÓN PARA EXPORTAR GASTOS A EXCEL (CON FILA DE TOTAL AUTOMÁTICA) ---
   const exportarAExcel = async () => {
     if (!datosEgresos || datosEgresos.length === 0) {
       mostrarAlerta("No hay datos de gastos para exportar", "error");
@@ -70,6 +108,7 @@ export default function Gastos({
         { header: 'NOTA / OBSERVACIONES', key: 'nota', width: 30 }
       ];
 
+      // Insertar los registros de gastos
       datosEgresos.forEach((g) => {
         const proveedor = g.nombre_proveedor || g.proveedores?.nombre_completo || g.proveedores?.nombre || 'Particular';
         const nit = g.nit_cc || g.proveedores?.nit_cc || 'N/A';
@@ -91,47 +130,82 @@ export default function Gastos({
         });
       });
 
+      // 🧮 AGREGAR LA FILA DE TOTALES DINÁMICA
+      const totalRowNumber = worksheet.rowCount + 1; // Fila inmediatamente después de los datos
+      const ultimaFilaDatos = worksheet.rowCount;    // La fila donde terminan los registros
+
+      // Añadir fila con la fórmula SUMA apuntando dinámicamente a la columna K (Monto Total)
+      const totalRow = worksheet.addRow({
+        descripcion: 'TOTAL GENERAL DE GASTOS:',
+        monto: { formula: `=SUM(K2:K${ultimaFilaDatos})` } // Fórmula nativa de Excel
+      });
+
+      // Estilo de la cabecera (Fila 1)
       const headerRow = worksheet.getRow(1);
       headerRow.height = 24;
-      
       headerRow.eachCell((cell) => {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF70AD47' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF117097' } }; // Azul Océano
         cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
       });
 
+      // Estilo y formato de filas de datos
       worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return;
+        if (rowNumber === 1 || rowNumber === totalRowNumber) return; // Omitir cabecera y totalizador por ahora
         row.height = 20;
         const esCebra = rowNumber % 2 === 0;
         row.eachCell((cell, colNumber) => {
           cell.font = { name: 'Arial', size: 9 };
-          if (esCebra) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
+          if (esCebra) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF5FB' } }; // Cebra azulada clara
+          
           if ([1, 2, 5].includes(colNumber)) cell.alignment = { vertical: 'middle', horizontal: 'center' };
           else if ([8, 10, 11].includes(colNumber)) cell.alignment = { vertical: 'middle', horizontal: 'right' };
           else cell.alignment = { vertical: 'middle', horizontal: 'left' };
+          
           if (colNumber === 8) cell.numFmt = '#,##0';
           if (colNumber === 10 || colNumber === 11) cell.numFmt = '"$"#,##0';
         });
       });
 
-      worksheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: worksheet.rowCount, column: worksheet.columnCount } };
+      // 🎨 DAR ESTILO A LA FILA DE TOTALES (Fila final)
+      totalRow.height = 22;
+      totalRow.eachCell((cell, colNumber) => {
+        cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF0A4C68' } }; // Azul oscuro destacado
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD6EEFC' } }; // Fondo celeste de totales
+        
+        // Bordes de contabilidad estándar (línea delgada superior y doble inferior para el total)
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF117097' } },
+          bottom: { style: 'double', color: { argb: 'FF117097' } }
+        };
+
+        if (colNumber === 7) {
+          cell.alignment = { vertical: 'middle', horizontal: 'right' }; // Alinear texto "TOTAL GENERAL..."
+        }
+        if (colNumber === 11) {
+          cell.alignment = { vertical: 'middle', horizontal: 'right' }; // Alinear el resultado de la suma
+          cell.numFmt = '"$"#,##0'; // Formato de moneda
+        }
+      });
+
+      worksheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: ultimaFilaDatos, column: worksheet.columnCount } };
+      
       const buffer = await workbook.xlsx.writeBuffer();
       const fechaHoy = new Date().toISOString().split('T')[0];
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       saveAs(blob, `BITACORA_GASTOS_${fechaHoy}.xlsx`);
+      
       if (typeof mostrarAlerta === "function") mostrarAlerta("Reporte de gastos generado con éxito", "exito");
     } catch (error) {
       console.error("Error al exportar Excel:", error);
     }
   };
 
-  // --- REGISTRO Y VALIDACIÓN ESTRICTA ---
-  // --- REGISTRO Y VALIDACIÓN ESTRICTA CORREGIDA ---
+  // --- REGISTRO Y ACTUALIZACIÓN ---
   const handleSubmit = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     
-    // VALIDACIÓN ABSOLUTA: Todos los campos del flujo principal deben tener datos válidos
+    // VALIDACIÓN ABSOLUTA
     if (!gastoForm.fecha) {
       mostrarAlerta("La fecha de pago es obligatoria", "error");
       return;
@@ -161,7 +235,6 @@ export default function Gastos({
       return;
     }
 
-    // PAYLOAD CORREGIDO: Mapeo exacto con las columnas de tu tabla 'egresos'
     const payload = {
       invernadero_id: gastoForm.invernadero_id,
       descripcion: gastoForm.descripcion.toUpperCase().trim(),
@@ -176,25 +249,30 @@ export default function Gastos({
       precio_unitario: parseFloat(gastoForm.precio_unitario) || 0
     };
 
-    const { error } = await supabase.from('egresos').insert([payload]);
-    if (error) {
-      mostrarAlerta("Error al guardar: " + error.message, "error");
-    } else {
-      mostrarAlerta("Gasto registrado correctamente en bitácora", "exito");
-      setGastoForm({ 
-        invernadero_id: '', 
-        descripcion: '', 
-        monto: 0, 
-        categoria: 'Insumo Agricola', 
-        proveedor_id: '', 
-        numero_comprobante: '', 
-        nota: '', 
-        fecha: new Date().toISOString().split('T')[0], 
-        cantidad: '', 
-        unidad_medida: 'Unidad', 
-        precio_unitario: '' 
-      });
+    try {
+      if (gastoForm.id_editando) {
+        // ACTUALIZACIÓN DE REGISTRO EXISTENTE (UPDATE)
+        const { error } = await supabase
+          .from('egresos')
+          .update(payload)
+          .eq('id', gastoForm.id_editando);
+
+        if (error) throw error;
+        mostrarAlerta("Gasto actualizado correctamente en bitácora", "exito");
+      } else {
+        // CREACIÓN DE REGISTRO NUEVO (INSERT)
+        const { error } = await supabase
+          .from('egresos')
+          .insert([payload]);
+
+        if (error) throw error;
+        mostrarAlerta("Gasto registrado correctamente en bitácora", "exito");
+      }
+
+      cancelarEdicion();
       cargarTodo();
+    } catch (err) {
+      mostrarAlerta("Error al guardar: " + err.message, "error");
     }
   };
 
@@ -202,13 +280,15 @@ export default function Gastos({
     <div className="space-y-6 pb-20">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* COLUMNA IZQUIERDA: FORMULARIO DE REGISTRO REORGANIZADO */}
-        <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-red-700 h-fit">
+        {/* COLUMNA IZQUIERDA: FORMULARIO DE REGISTRO REORGANIZADO (Azul Océano) */}
+        <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-[#117097] h-fit">
           <div className="flex justify-between items-center mb-5 border-b pb-3">
-            <h3 className="font-black text-slate-800 uppercase text-xs italic">💸 Nuevo Egreso</h3>
+            <h3 className="font-black text-slate-800 uppercase text-xs italic">
+              {gastoForm.id_editando ? "✏️ Editar Egreso" : "💸 Nuevo Egreso"}
+            </h3>
             <div className="text-right">
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Total Gasto</p>
-              <p className="text-lg font-black text-red-700">{formatoPesos(gastoForm.monto)}</p>
+              <p className="text-lg font-black text-[#117097]">{formatoPesos(gastoForm.monto)}</p>
             </div>
           </div>
 
@@ -218,19 +298,19 @@ export default function Gastos({
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Fecha de Pago</label>
-                <input type="date" className="w-full border-2 p-2.5 rounded-xl font-bold text-xs outline-none focus:border-red-500" 
+                <input type="date" className="w-full border-2 p-2.5 rounded-xl font-bold text-xs outline-none focus:border-[#117097]" 
                   value={gastoForm.fecha} onChange={e => setGastoForm({...gastoForm, fecha: e.target.value})} />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-red-600 uppercase px-1 italic">N° Factura / Comp.</label>
-                <input className="w-full border-2 border-red-200 p-2.5 rounded-xl font-black text-xs text-red-700 outline-none focus:border-red-500 uppercase" 
+                <label className="text-[10px] font-bold text-[#117097] uppercase px-1 italic">N° Factura / Comp.</label>
+                <input className="w-full border-2 border-sky-100 p-2.5 rounded-xl font-black text-xs text-[#117097] outline-none focus:border-[#117097] uppercase" 
                   value={gastoForm.numero_comprobante} onChange={e => setGastoForm({...gastoForm, numero_comprobante: e.target.value})} placeholder="FAC-123" />
               </div>
             </div>
 
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Invernadero Asignado</label>
-              <select className="w-full border-2 p-2.5 rounded-xl bg-white font-bold text-xs outline-none focus:border-red-500" 
+              <select className="w-full border-2 p-2.5 rounded-xl bg-white font-bold text-xs outline-none focus:border-[#117097]" 
                 value={gastoForm.invernadero_id} onChange={e => setGastoForm({...gastoForm, invernadero_id: e.target.value})}>
                 <option value="">Seleccionar bloque...</option>
                 {listaInvernaderos?.filter(inv => inv.activo !== false).map(i => <option key={i.id} value={i.id}>{i.nombre}</option>)}
@@ -239,7 +319,7 @@ export default function Gastos({
 
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Categoría</label>
-              <select className="w-full border-2 p-2.5 rounded-xl bg-white font-bold text-xs outline-none focus:border-red-500" 
+              <select className="w-full border-2 p-2.5 rounded-xl bg-white font-bold text-xs outline-none focus:border-[#117097]" 
                 value={gastoForm.categoria} onChange={e => setGastoForm({...gastoForm, categoria: e.target.value})}>
                 {categorias.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -247,13 +327,13 @@ export default function Gastos({
 
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Concepto / Detalle del Gasto</label>
-              <input placeholder="Ej: Compra de abono" className="w-full border-2 p-2.5 rounded-xl font-bold text-sm outline-none focus:border-red-500" 
+              <input placeholder="Ej: Compra de abono" className="w-full border-2 p-2.5 rounded-xl font-bold text-sm outline-none focus:border-[#117097]" 
                 value={gastoForm.descripcion} onChange={e => setGastoForm({...gastoForm, descripcion: e.target.value})} />
             </div>
 
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Proveedor / Beneficiario</label>
-              <select className="w-full border-2 p-2.5 rounded-xl bg-white font-bold text-xs outline-none focus:border-red-500" 
+              <select className="w-full border-2 p-2.5 rounded-xl bg-white font-bold text-xs outline-none focus:border-[#117097]" 
                 value={gastoForm.proveedor_id} onChange={e => setGastoForm({...gastoForm, proveedor_id: e.target.value})}>
                 <option value="">Particular / Otros</option>
                 {listaProveedores?.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
@@ -265,24 +345,24 @@ export default function Gastos({
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[9px] font-black text-slate-500 uppercase px-1">Cantidad</label>
-                  <input type="number" className="w-full p-2 border-2 bg-white rounded-xl outline-none text-xs font-black text-slate-700 focus:border-red-500" 
+                  <input type="number" className="w-full p-2 border-2 bg-white rounded-xl outline-none text-xs font-black text-slate-700 focus:border-[#117097]" 
                     value={gastoForm.cantidad} onChange={e => setGastoForm({...gastoForm, cantidad: e.target.value})} placeholder="0" />
                 </div>
                 <div>
                   <label className="text-[9px] font-black text-slate-500 uppercase px-1">U. Medida</label>
-                  <select className="w-full p-2 border-2 bg-white rounded-xl outline-none text-xs font-bold focus:border-red-500" 
+                  <select className="w-full p-2 border-2 bg-white rounded-xl outline-none text-xs font-bold focus:border-[#117097]" 
                     value={gastoForm.unidad_medida} onChange={e => setGastoForm({...gastoForm, unidad_medida: e.target.value})}>
                     {unidades.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
               </div>
               
-              {/* CAMPO CORREGIDO: MÁSCARA EN TIEMPO REAL PARA EL PRECIO UNITARIO */}
+              {/* PRECIO UNITARIO */}
               <div>
                 <label className="text-[9px] font-black text-slate-500 uppercase px-1">Precio Unitario (COP)</label>
                 <input 
                   type="text" 
-                  className="w-full p-2 border-2 bg-white rounded-xl outline-none text-xs font-black text-red-600 focus:border-red-500" 
+                  className="w-full p-2 border-2 bg-white rounded-xl outline-none text-xs font-black text-[#117097] focus:border-[#117097]" 
                   value={formatearMascaraMoneda(gastoForm.precio_unitario)} 
                   onChange={e => setGastoForm({...gastoForm, precio_unitario: e.target.value.replace(/\D/g, "")})} 
                   placeholder="$ 0" 
@@ -300,13 +380,21 @@ export default function Gastos({
 
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Notas Adicionales</label>
-              <input className="w-full border-2 p-2.5 rounded-xl font-bold text-xs outline-none focus:border-red-500" 
+              <input className="w-full border-2 p-2.5 rounded-xl font-bold text-xs outline-none focus:border-[#117097]" 
                 value={gastoForm.nota} onChange={e => setGastoForm({...gastoForm, nota: e.target.value})} placeholder="Observaciones..." />
             </div>
 
-            <button type="submit" className="w-full bg-red-700 text-white font-black py-3.5 rounded-xl shadow-md hover:bg-red-800 transition-colors uppercase tracking-wider text-xs">
-              🚀 Registrar Egreso
-            </button>
+            {/* BOTONES DE CONTROL DE FORMULARIO */}
+            <div className="flex gap-2">
+              {gastoForm.id_editando && (
+                <button type="button" onClick={cancelarEdicion} className="w-1/3 bg-gray-500 text-white font-black py-3.5 rounded-xl shadow-md hover:bg-gray-600 transition-colors uppercase tracking-wider text-xs">
+                  Cancelar
+                </button>
+              )}
+              <button type="submit" className={`flex-1 ${gastoForm.id_editando ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[#117097] hover:bg-[#0a4c68]'} text-white font-black py-3.5 rounded-xl shadow-md transition-colors uppercase tracking-wider text-xs`}>
+                {gastoForm.id_editando ? "💾 Guardar Cambios" : "🚀 Registrar Egreso"}
+              </button>
+            </div>
           </form>
         </div>
 
@@ -336,10 +424,10 @@ export default function Gastos({
               </thead>
               <tbody className="divide-y-2 divide-gray-400">
                 {datosEgresos?.sort((a, b) => b.id - a.id).map((g, index) => (
-                  <tr key={g.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-200'} hover:bg-yellow-100 transition-colors border-l-8 border-red-700`}>
+                  <tr key={g.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-100'} hover:bg-sky-50 transition-colors border-l-8 border-[#117097]`}>
                     <td className="p-4">
                       <div className="font-black text-slate-900">{g.fecha_gasto}</div>
-                      <div className="text-[10px] text-red-700 font-black mt-0.5">{g.numero_comprobante ? `DOC: ${g.numero_comprobante.toUpperCase()}` : 'S/N'}</div>
+                      <div className="text-[10px] text-[#117097] font-black mt-0.5">{g.numero_comprobante ? `DOC: ${g.numero_comprobante.toUpperCase()}` : 'S/N'}</div>
                     </td>
                     <td className="p-4">
                       <span className="bg-slate-700 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase shadow-sm">
@@ -348,17 +436,20 @@ export default function Gastos({
                     </td>
                     <td className="p-4 font-bold text-slate-800">
                       <p className="uppercase">{g.descripcion}</p>
-                      <p className="text-[9px] text-slate-400 uppercase italic mt-0.5">📌 {g.categoria || 'Varios'}</p>
+                      <p className="text-[9px] text-[#117097] font-black uppercase italic mt-0.5">📌 {g.categoria || 'Varios'}</p>
                     </td>
                     <td className="p-4 text-center">
                       <div className="font-black text-slate-800">{g.cantidad} {g.unidad_medida}</div>
                       <div className="text-[9px] text-slate-400 font-bold">{formatoPesos(g.precio_unitario)} c/u</div>
                     </td>
-                    <td className="p-4 text-right font-black text-red-700 text-[12px]">
+                    <td className="p-4 text-right font-black text-[#117097] text-[12px]">
                       {formatoPesos(g.monto)}
                     </td>
                     <td className="p-4">
                       <div className="flex gap-1.5 justify-center">
+                        <button onClick={() => prepararEdicion(g)} className="px-2 py-1 bg-slate-700 text-white rounded-lg hover:bg-slate-900 transition-colors flex items-center gap-1 border border-slate-800 shadow-md">
+                          <span className="text-[11px]">✏️</span><span className="text-[9px] font-black tracking-wider">EDITAR</span>
+                        </button>
                         <button onClick={() => imprimirGastoPDF(g)} className="px-2 py-1 bg-slate-800 text-white rounded-lg hover:bg-black transition-colors flex items-center gap-1 border border-slate-900 shadow-md">
                           <span className="text-[11px]">🖨️</span><span className="text-[9px] font-black tracking-wider">PDF</span>
                         </button>

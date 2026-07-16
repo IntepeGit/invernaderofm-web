@@ -11,13 +11,19 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
   const [tabInterna, setTabInterna] = useState('planilla'); 
   const [cargando, setCargando] = useState(false);
 
-  // MEMORIA LOCAL: Almacena los IDs de los operarios pagados en la sesión del sábado
+  // Filtro secundario dentro de la liquidación: 'sabado' o 'quincena'
+  const [subTabLiquidacion, setSubTabLiquidacion] = useState('sabado');
+
+  // MEMORIA LOCAL: Almacena los IDs de los operarios pagados en la sesión actual
   const [idsLiquidadosHoy, setIdsLiquidadosHoy] = useState([]);
 
-  // Estados para formularios
-  const [formTrabajador, setFormTrabajador] = useState({ id_editando: null, nombre_completo: '', cedula: '', telefono: '', pago_jornal_base: '' });
+  // Estados para formularios (Se agrega 'tipo_pago' al trabajador)
+  const [formTrabajador, setFormTrabajador] = useState({ id_editando: null, nombre_completo: '', cedula: '', telefono: '', pago_jornal_base: '', tipo_pago: 'Sábado (Jornalero)' });
   const [formJornal, setFormJornal] = useState({ id_editando: null, trabajador_id: '', fecha_labor: new Date().toISOString().split('T')[0], invernadero_id: '', tipo_labor: 'JORNAL', valor_pagar: '', observaciones: '' });
   const [formVale, setFormVale] = useState({ id_editando: null, trabajador_id: '', fecha_vale: new Date().toISOString().split('T')[0], monto_vale: '', motivo_nota: '' });
+
+  // Tipos de pago soportados
+  const tiposPago = ["Sábado (Jornalero)", "Quincenal (Fijo)"];
 
   // Formateador de moneda colombiana
   const formatoPesos = (valor) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(valor || 0);
@@ -54,7 +60,8 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
       nombre_completo: formTrabajador.nombre_completo.toUpperCase().trim(),
       cedula: formTrabajador.cedula.trim(),
       telefono: formTrabajador.telefono.trim(),
-      pago_jornal_base: parseFloat(formTrabajador.pago_jornal_base) || 0
+      pago_jornal_base: parseFloat(formTrabajador.pago_jornal_base) || 0,
+      tipo_pago: formTrabajador.tipo_pago // 👈 Nuevo parámetro
     };
 
     try {
@@ -80,7 +87,8 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
       nombre_completo: item.nombre_completo,
       cedula: item.cedula,
       telefono: item.telefono || '',
-      pago_jornal_base: item.pago_jornal_base
+      pago_jornal_base: item.pago_jornal_base,
+      tipo_pago: item.tipo_pago || 'Sábado (Jornalero)'
     });
     setTabInterna('personal');
   };
@@ -96,7 +104,7 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
     }
   };
 
-  const limpiarFormTrabajador = () => setFormTrabajador({ id_editando: null, nombre_completo: '', cedula: '', telefono: '', pago_jornal_base: '' });
+  const limpiarFormTrabajador = () => setFormTrabajador({ id_editando: null, nombre_completo: '', cedula: '', telefono: '', pago_jornal_base: '', tipo_pago: 'Sábado (Jornalero)' });
 
   // --- 3. OPERACIONES: JORNALES ---
   const registrarJornalDiario = async (e) => {
@@ -135,8 +143,6 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
     } catch (err) { mostrarAlerta("Error al registrar jornal", "error"); }
   };
 
-  const ArrayPreLiquidacionEstatica = [];
-
   const prepararEdicionJornal = (item) => {
     setFormJornal({
       id_editando: item.id,
@@ -168,6 +174,16 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
     e.preventDefault();
     const monto = parseFloat(formVale.monto_vale);
     if (!formVale.trabajador_id || monto <= 0) return;
+
+    // Validación inteligente de cupo de vales
+    const t = trabajadores.find(trab => trab.id === formVale.trabajador_id);
+    const limiteEfectivo = t ? (t.tipo_pago === 'Quincenal (Fijo)' ? t.pago_jornal_base : t.pago_jornal_base * 6) : 0;
+    
+    if (monto > limiteEfectivo) {
+      if (!window.confirm(`⚠️ Alerta: El monto del vale ($${monto.toLocaleString()}) supera la capacidad recomendada de este operario ($${limiteEfectivo.toLocaleString()}). ¿Desea autorizarlo de todos modos?`)) {
+        return;
+      }
+    }
 
     const payload = {
       trabajador_id: formVale.trabajador_id,
@@ -216,48 +232,63 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
 
   const limpiarFormVale = () => setFormVale({ id_editando: null, trabajador_id: '', fecha_vale: new Date().toISOString().split('T')[0], monto_vale: '', motivo_nota: '' });
 
-  // --- 5. ALGORITMO INTEGRAL DE LIQUIDACIÓN ---
-  const calcularPreLiquidacion = () => {
-    const listado = trabajadores.map(t => {
-      const jornalesObrero = jornalesPendientes.filter(j => j.trabajador_id === t.id);
-      const valesObrero = valesPendientes.filter(v => v.trabajador_id === t.id);
+  // --- 5. ALGORITMO INTEGRAL DE LIQUIDACIÓN DE SÁBADO Y QUINCENAL ---
+  const calcularPreLiquidacion = (filtroPago) => {
+    const listado = trabajadores
+      .filter(t => (t.tipo_pago || 'Sábado (Jornalero)') === filtroPago)
+      .map(t => {
+        const jornalesObrero = jornalesPendientes.filter(j => j.trabajador_id === t.id);
+        const valesObrero = valesPendientes.filter(v => v.trabajador_id === t.id);
 
-      const totalGanado = jornalesObrero.reduce((acc, j) => acc + parseFloat(j.valor_pagar || 0), 0);
-      const totalVales = valesObrero.reduce((acc, v) => acc + parseFloat(v.monto_vale || 0), 0);
-      const netoPagar = totalGanado - totalVales;
+        let totalGanado = 0;
+        let diasTrabajados = 0;
 
-      // Si ya se le dio click a pagar en esta sesión, forzamos que mantenga sus datos congelados en la fila
-      const yaLiquidadoLocal = idsLiquidadosHoy.includes(t.id);
+        if (filtroPago === 'Quincenal (Fijo)') {
+          // El pago quincenal es fijo (está guardado en su columna pago_jornal_base como salario quincenal)
+          totalGanado = t.pago_jornal_base;
+          diasTrabajados = 15; // Representación de periodo estándar
+        } else {
+          // Para jornaleros calculamos la suma de sus asistencias semanales
+          totalGanado = jornalesObrero.reduce((acc, j) => acc + parseFloat(j.valor_pagar || 0), 0);
+          diasTrabajados = jornalesObrero.length;
+        }
 
-      return {
-        id: t.id,
-        nombre: t.nombre_completo,
-        cedula: t.cedula || 'N/R',
-        telefono: t.telefono || 'N/R',
-        diasTrabajados: jornalesObrero.length,
-        totalGanado,
-        totalVales,
-        netoPagar,
-        pagadoLocal: yaLiquidadoLocal
-      };
-    });
+        const totalVales = valesObrero.reduce((acc, v) => acc + parseFloat(v.monto_vale || 0), 0);
+        const netoPagar = totalGanado - totalVales;
 
-    // Mantenemos visible la fila si tiene días laborados, vales, O si ya fue pagado localmente hoy
-    return listado.filter(l => l.diasTrabajados > 0 || l.totalVales > 0 || l.pagadoLocal === true);
+        const yaLiquidadoLocal = idsLiquidadosHoy.includes(t.id);
+
+        return {
+          id: t.id,
+          nombre: t.nombre_completo,
+          cedula: t.cedula || 'N/R',
+          telefono: t.telefono || 'N/R',
+          diasTrabajados,
+          totalGanado,
+          totalVales,
+          netoPagar,
+          pagadoLocal: yaLiquidadoLocal,
+          tipo_pago: t.tipo_pago || 'Sábado (Jornalero)'
+        };
+      });
+
+    // Mostrar si tiene labores, vales o si ya fue liquidado hoy
+    return listado.filter(l => l.diasTrabajados > 0 || l.totalVales > 0 || l.pagadoLocal === true || l.tipo_pago === 'Quincenal (Fijo)');
   };
 
-  // --- FUNCIÓN RECIBO PDF NOMINA ---
+  // --- FUNCIÓN RECIBO PDF NOMINA (Con tu Azul Océano #117097) ---
   const generarComprobanteNominaPDF = (item) => {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [105, 148] });
 
-    doc.setDrawColor(112, 173, 71); doc.setLineWidth(0.8); doc.rect(4, 4, 97, 140);
+    // Bordes en el Azul Océano de tu app (17, 112, 151)
+    doc.setDrawColor(17, 112, 151); doc.setLineWidth(0.8); doc.rect(4, 4, 97, 140);
     try { doc.addImage('/Logopapel.png', 'PNG', 42.5, 6, 20, 20); } catch (e) {}
 
     const fechaHoy = new Date().toISOString().split('T')[0];
     doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(60, 60, 60);
     doc.text(`Comp. N°: NOM-${String(item.id).substring(0, 4).toUpperCase()}`, 6, 11);
 
-    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(40, 80, 40);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(17, 112, 151); //[cite: 1]
     doc.text("COMPROBANTE DE PAGO", 52.5, 29, { align: "center" });
 
     const yBase = 33;
@@ -277,12 +308,13 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
     doc.setFont("helvetica", "bold"); doc.text("TEL:", 53, yBase + 13.5);
     doc.setFont("helvetica", "normal"); doc.text(item.telefono, 60, yBase + 13.5);
 
+    const esQuincenal = item.tipo_pago === 'Quincenal (Fijo)';
     const filasTabla = [[
-      `${item.diasTrabajados || '---'}`,
-      "Días",
-      "JORNALES LABORADOS ACUMULADOS",
+      `${esQuincenal ? '1' : item.diasTrabajados || '---'}`,
+      `${esQuincenal ? 'Quincena' : 'Días'}`,
+      `${esQuincenal ? 'PAGO SALARIO FIJO QUINCENAL' : 'JORNALES LABORADOS ACUMULADOS'}`,
       "",
-      `+${formatoPesos(item.totalGanado || item.montoRetro)}`
+      `+${formatoPesos(item.totalGanado)}`
     ]];
 
     if (item.totalVales > 0) {
@@ -293,14 +325,14 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
       startY: yBase + 18, margin: { left: 6, right: 6 },
       head: [["Cant.", "Unidad", "Detalle del Pago", "Precio Unit.", "Monto Total"]], body: filasTabla, theme: 'grid',
       styles: { font: 'helvetica', fontSize: 6.5, cellPadding: 1.5, lineWidth: 0.1, lineColor: [210, 210, 210] },
-      headStyles: { fillColor: [112, 173, 71], textColor: [255, 255, 255], halign: 'center', fontStyle: 'bold' },
+      headStyles: { fillColor: [17, 112, 151], textColor: [255, 255, 255], halign: 'center', fontStyle: 'bold' }, //[cite: 1]
       columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 12, halign: 'center' }, 2: { cellWidth: 43, halign: 'left' }, 3: { cellWidth: 13, halign: 'right' }, 4: { cellWidth: 15, halign: 'right' } }
     });
 
     const yTotal = doc.lastAutoTable.finalY + 6;
     doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.setTextColor(0);
     doc.text("VALOR PAGADO:", 45, yTotal);
-    doc.text(formatoPesos(item.netoPagar || item.montoRetro), 99, yTotal, { align: 'right' });
+    doc.text(formatoPesos(item.netoPagar), 99, yTotal, { align: 'right' });
 
     const yFirmas = yTotal + 16;
     doc.setDrawColor(0); doc.setLineWidth(0.3);
@@ -312,26 +344,26 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
     doc.save(`RECIBO_NOMINA_${item.nombre.replace(/ /g, "_")}.pdf`);
   };
 
-  // --- 6. PROCESAR LIQUIDACIÓN EN BLOQUE (SÓLO ASENTA EL PAGO SIN REPETIR PDF) ---
+  // --- 6. PROCESAR LIQUIDACIÓN EN BLOQUE ---
   const pagarNominaTrabajador = async (item) => {
     if (!window.confirm(`¿Confirmas el asentamiento de pago definitivo en bitácora para ${item.nombre}?`)) return;
 
     try {
-      // 1. Guardamos el ID del operario en la memoria de la sesión local ANTES de refrescar la DB
       setIdsLiquidadosHoy(prev => [...prev, item.id]);
 
-      // 2. Marcamos las relaciones como liquidadas en el backend
-      const [resJornales, resVales] = await Promise.all([
-        supabase.from('nomina_jornales').update({ liquidado: true }).eq('trabajador_id', item.id).eq('liquidado', false),
+      // Si es pago quincenal no liquida jornales semanales (porque no tiene), solo liquida vales.
+      const promesas = [
         supabase.from('nomina_vales').update({ descontado: true }).eq('trabajador_id', item.id).eq('descontado', false)
-      ]);
+      ];
 
-      if (resJornales.error) throw resJornales.error;
-      if (resVales.error) throw resVales.error;
+      if (item.tipo_pago !== 'Quincenal (Fijo)') {
+        promesas.push(
+          supabase.from('nomina_jornales').update({ liquidado: true }).eq('trabajador_id', item.id).eq('liquidado', false)
+        );
+      }
 
+      await Promise.all(promesas);
       mostrarAlerta(`Pago de ${item.nombre} asentado correctamente`, "exito");
-      
-      // 3. Sincronizamos los totales con Supabase
       await cargarDatosNomina();
 
     } catch (err) {
@@ -340,16 +372,18 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
     }
   };
 
-  const listaLiquidacion = calcularPreLiquidacion();
+  const listaLiquidacionSabado = calcularPreLiquidacion('Sábado (Jornalero)');
+  const listaLiquidacionQuincena = calcularPreLiquidacion('Quincenal (Fijo)');
+  
   const invernaderosActivos = listaInvernaderos?.filter(inv => inv.activo !== false) || [];
 
   return (
     <div className="space-y-6 pb-20">
-      {/* MENÚ DE ACCESO INTERNO */}
+      {/* MENÚ DE ACCESO INTERNO (Adaptado a tu color #117097) */}
       <div className="flex gap-2 border-b-2 border-gray-200 pb-2 overflow-x-auto">
-        <button onClick={() => setTabInterna('planilla')} className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all whitespace-nowrap ${tabInterna === 'planilla' ? 'bg-green-800 text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>📅 Planilla Diaria / Vales</button>
-        <button onClick={() => setTabInterna('liquidacion')} className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all whitespace-nowrap ${tabInterna === 'liquidacion' ? 'bg-amber-700 text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>💰 Liquidar Sábado ({listaLiquidacion.length})</button>
-        <button onClick={() => setTabInterna('personal')} className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all whitespace-nowrap ${tabInterna === 'personal' ? 'bg-slate-800 text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>👥 Registro de Trabajadores</button>
+        <button onClick={() => setTabInterna('planilla')} className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all whitespace-nowrap ${tabInterna === 'planilla' ? 'bg-[#117097] text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>📅 Planilla Diaria / Vales</button>
+        <button onClick={() => setTabInterna('liquidacion')} className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all whitespace-nowrap ${tabInterna === 'liquidacion' ? 'bg-[#117097] text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>💰 Liquidación Central</button>
+        <button onClick={() => setTabInterna('personal')} className={`px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all whitespace-nowrap ${tabInterna === 'personal' ? 'bg-[#117097] text-white shadow-md' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>👥 Registro de Trabajadores</button>
       </div>
 
       {/* PESTAÑA 1: PLANILLA Y REGISTRO DIARIO */}
@@ -357,7 +391,7 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* ASISTENCIA */}
           <div className="space-y-4">
-            <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-green-800">
+            <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-[#117097]">
               <h3 className="font-black text-slate-800 uppercase text-xs italic mb-4">
                 {formJornal.id_editando ? '📝 Editar Asistencia Semanal' : '📝 Asistencia y Labores por Invernadero'}
               </h3>
@@ -365,39 +399,41 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Fecha de Labor</label>
-                    <input type="date" className="w-full border-2 p-2.5 rounded-xl font-bold text-sm outline-none focus:border-green-800" value={formJornal.fecha_labor} onChange={e => setFormJornal({...formJornal, fecha_labor: e.target.value})} required />
+                    <input type="date" className="w-full border-2 p-2.5 rounded-xl font-bold text-sm outline-none focus:border-[#117097]" value={formJornal.fecha_labor} onChange={e => setFormJornal({...formJornal, fecha_labor: e.target.value})} required />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Invernadero</label>
-                    <select className="w-full border-2 p-2.5 rounded-xl font-bold bg-white text-xs outline-none focus:border-green-800" value={formJornal.invernadero_id} onChange={e => setFormJornal({...formJornal, invernadero_id: e.target.value})}>
+                    <select className="w-full border-2 p-2.5 rounded-xl font-bold bg-white text-xs outline-none focus:border-[#117097]" value={formJornal.invernadero_id} onChange={e => setFormJornal({...formJornal, invernadero_id: e.target.value})}>
                       <option value="">GENERAL / TODA EL INVERNADERO</option>
                       {invernaderosActivos.map(inv => <option key={inv.id} value={inv.id}>{inv.nombre?.toUpperCase()}</option>)}
                     </select>
                   </div>
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Seleccione Trabajador</label>
-                  <select className="w-full border-2 p-2.5 rounded-xl font-bold bg-white text-xs uppercase outline-none focus:border-green-800" value={formJornal.trabajador_id} onChange={e => setFormJornal({...formJornal, trabajador_id: e.target.value})} required>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Seleccione Trabajador (Solo Jornaleros)</label>
+                  <select className="w-full border-2 p-2.5 rounded-xl font-bold bg-white text-xs uppercase outline-none focus:border-[#117097]" value={formJornal.trabajador_id} onChange={e => setFormJornal({...formJornal, trabajador_id: e.target.value})} required>
                     <option value="">Seleccione operario...</option>
-                    {trabajadores.map(t => <option key={t.id} value={t.id}>{t.nombre_completo} (Tarifa Base: {formatoPesos(t.pago_jornal_base)})</option>)}
+                    {trabajadores.filter(t => t.tipo_pago !== 'Quincenal (Fijo)').map(t => (
+                      <option key={t.id} value={t.id}>{t.nombre_completo} (Tarifa Base: {formatoPesos(t.pago_jornal_base)})</option>
+                    ))}
                   </select>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Tipo de Labor</label>
-                    <input type="text" className="w-full border-2 p-2.5 rounded-xl font-bold text-xs uppercase outline-none focus:border-green-800" value={formJornal.tipo_labor} onChange={e => setFormJornal({...formJornal, tipo_labor: e.target.value})} placeholder="JORNAL / CONTRATO" required />
+                    <input type="text" className="w-full border-2 p-2.5 rounded-xl font-bold text-xs uppercase outline-none focus:border-[#117097]" value={formJornal.tipo_labor} onChange={e => setFormJornal({...formJornal, tipo_labor: e.target.value})} placeholder="JORNAL / CONTRATO" required />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Tarifa Especial (COP)</label>
-                    <input type="number" className="w-full border-2 p-2.5 rounded-xl font-bold text-xs outline-none focus:border-green-800" value={formJornal.valor_pagar} onChange={e => setFormJornal({...formJornal, valor_pagar: e.target.value})} placeholder="Vacío = Usa tarifa base" />
+                    <input type="number" className="w-full border-2 p-2.5 rounded-xl font-bold text-xs outline-none focus:border-[#117097]" value={formJornal.valor_pagar} onChange={e => setFormJornal({...formJornal, valor_pagar: e.target.value})} placeholder="Vacío = Usa tarifa base" />
                   </div>
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Detalle / Notas de Actividad</label>
-                  <input type="text" className="w-full border-2 p-2.5 rounded-xl font-bold text-xs uppercase outline-none focus:border-green-800" value={formJornal.observaciones} onChange={e => setFormJornal({...formJornal, observaciones: e.target.value})} placeholder="Ej: Amarre de plantas o deshierbe" />
+                  <input type="text" className="w-full border-2 p-2.5 rounded-xl font-bold text-xs uppercase outline-none focus:border-[#117097]" value={formJornal.observaciones} onChange={e => setFormJornal({...formJornal, observaciones: e.target.value})} placeholder="Ej: Amarre de plantas o deshierbe" />
                 </div>
                 <div className="flex gap-2">
-                  <button type="submit" className={`flex-1 py-3.5 text-white font-black rounded-xl uppercase text-xs tracking-wider shadow-md transition-colors ${formJornal.id_editando ? 'bg-amber-600 hover:bg-amber-700' : 'bg-green-800 hover:bg-green-900'}`}>
+                  <button type="submit" className={`flex-1 py-3.5 text-white font-black rounded-xl uppercase text-xs tracking-wider shadow-md transition-colors ${formJornal.id_editando ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[#117097] hover:bg-[#0a4c68]'}`}>
                     {formJornal.id_editando ? '💾 Actualizar Jornal' : '✓ Cargar Jornal en Planilla'}
                   </button>
                   {formJornal.id_editando && <button type="button" onClick={limpiarFormJornal} className="px-4 bg-gray-200 rounded-xl font-black text-xs text-gray-600">X</button>}
@@ -406,7 +442,7 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
             </div>
 
             <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-200">
-              <div className="bg-slate-700 p-2.5 text-white font-black text-[10px] uppercase tracking-wider pl-4">Planilla Acumulada de la Semana</div>
+              <div className="bg-[#117097] p-2.5 text-white font-black text-[10px] uppercase tracking-wider pl-4">Planilla Acumulada de la Semana (Jornaleros)</div>
               <div className="max-h-56 overflow-y-auto text-[10px]">
                 <table className="w-full text-left border-collapse">
                   <thead>
@@ -425,7 +461,7 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
                         <tr key={j.id} className="hover:bg-slate-50 transition-colors">
                           <td className="p-3 text-slate-900 uppercase truncate max-w-[150px]">{j.nomina_trabajadores?.nombre_completo}</td>
                           <td className="p-3 uppercase text-slate-400 truncate max-w-[100px]">{j.invernaderos?.nombre || 'General'}</td>
-                          <td className="p-3 text-right text-green-700 font-black text-xs pr-4">{formatoPesos(j.valor_pagar)}</td>
+                          <td className="p-3 text-right text-emerald-700 font-black text-xs pr-4">{formatoPesos(j.valor_pagar)}</td>
                           <td className="p-3">
                             <div className="flex justify-center gap-2">
                               <button onClick={() => prepararEdicionJornal(j)} className="p-1.5 bg-amber-100 text-amber-700 rounded-md border border-amber-200 hover:bg-amber-600 hover:text-white transition-colors"><span className="text-xs">✏️</span></button>
@@ -441,9 +477,9 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
             </div>
           </div>
 
-          {/* VALES */}
+          {/* VALES (Para ambos trabajadores) */}
           <div className="space-y-4">
-            <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-amber-600 h-fit">
+            <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-[#117097] h-fit">
               <h3 className="font-black text-slate-800 uppercase text-xs italic mb-4">
                 {formVale.id_editando ? '📝 Modificar Vale / Adelanto' : '🎟️ Registrar Vales, Adelantos y Descuentos'}
               </h3>
@@ -451,26 +487,26 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Fecha Vale</label>
-                    <input type="date" className="w-full border-2 p-2.5 rounded-xl font-bold text-sm outline-none focus:border-amber-600" value={formVale.fecha_vale} onChange={e => setFormVale({...formVale, fecha_vale: e.target.value})} required />
+                    <input type="date" className="w-full border-2 p-2.5 rounded-xl font-bold text-sm outline-none focus:border-[#117097]" value={formVale.fecha_vale} onChange={e => setFormVale({...formVale, fecha_vale: e.target.value})} required />
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Monto Adelantado (COP)</label>
-                    <input type="number" className="w-full border-2 p-2.5 rounded-xl font-black text-green-700 text-sm outline-none focus:border-amber-600" value={formVale.monto_vale} onChange={e => setFormVale({...formVale, monto_vale: e.target.value})} placeholder="Ej: 50000" required />
+                    <input type="number" className="w-full border-2 p-2.5 rounded-xl font-black text-emerald-700 text-sm outline-none focus:border-[#117097]" value={formVale.monto_vale} onChange={e => setFormVale({...formVale, monto_vale: e.target.value})} placeholder="Ej: 50000" required />
                   </div>
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Trabajador Beneficiario</label>
-                  <select className="w-full border-2 p-2.5 rounded-xl font-bold bg-white text-xs uppercase outline-none focus:border-amber-600" value={formVale.trabajador_id} onChange={e => setFormVale({...formVale, trabajador_id: e.target.value})} required>
+                  <select className="w-full border-2 p-2.5 rounded-xl font-bold bg-white text-xs uppercase outline-none focus:border-[#117097]" value={formVale.trabajador_id} onChange={e => setFormVale({...formVale, trabajador_id: e.target.value})} required>
                     <option value="">Seleccione operario...</option>
-                    {trabajadores.map(t => <option key={t.id} value={t.id}>{t.nombre_completo}</option>)}
+                    {trabajadores.map(t => <option key={t.id} value={t.id}>{t.nombre_completo} ({t.tipo_pago || 'Jornalero'})</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Motivo del Adelanto</label>
-                  <input type="text" className="w-full border-2 p-2.5 rounded-xl font-bold text-xs uppercase outline-none focus:border-amber-600" value={formVale.motivo_nota} onChange={e => setFormVale({...formVale, motivo_nota: e.target.value})} placeholder="Ej: Avance o abono a quincena" required />
+                  <input type="text" className="w-full border-2 p-2.5 rounded-xl font-bold text-xs uppercase outline-none focus:border-[#117097]" value={formVale.motivo_nota} onChange={e => setFormVale({...formVale, motivo_nota: e.target.value})} placeholder="Ej: Avance o abono a quincena" required />
                 </div>
                 <div className="flex gap-2">
-                  <button type="submit" className="flex-1 py-3.5 text-white font-black rounded-xl uppercase text-xs tracking-wider shadow-md transition-colors bg-amber-600 hover:bg-amber-700">
+                  <button type="submit" className="flex-1 py-3.5 text-white font-black rounded-xl uppercase text-xs tracking-wider shadow-md transition-colors bg-[#117097] hover:bg-[#0a4c68]">
                     {formVale.id_editando ? '💾 Guardar Modificación' : '💸 Registrar Adelanto / Descuento'}
                   </button>
                   {formVale.id_editando && <button type="button" onClick={limpiarFormVale} className="px-4 bg-gray-200 rounded-xl font-black text-xs text-gray-600">X</button>}
@@ -479,7 +515,7 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
             </div>
 
             <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-200">
-              <div className="bg-slate-700 p-2.5 text-white font-black text-[10px] uppercase tracking-wider pl-4">Vales y Descuentos Cruzados de la Semana</div>
+              <div className="bg-[#117097] p-2.5 text-white font-black text-[10px] uppercase tracking-wider pl-4">Vales y Descuentos Cruzados de la Semana</div>
               <div className="max-h-56 overflow-y-auto text-[10px]">
                 <table className="w-full text-left border-collapse">
                   <thead>
@@ -516,22 +552,36 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
         </div>
       )}
 
-      {/* PESTAÑA 2: ASISTENTE DE LIQUIDACIÓN DE SÁBADO (CON MEMORIA DE CONCHULITO VERDE) */}
+      {/* PESTAÑA 2: ASISTENTE CENTRAL DE LIQUIDACIÓN DE SÁBADO Y QUINCENAS */}
       {tabInterna === 'liquidacion' && (
         <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-200">
-          <div className="p-4 bg-amber-700 text-white font-black text-xs uppercase tracking-widest italic flex justify-between items-center">
-            <span>Asistente Central de Cierre de Cuentas (Sábado)</span>
+          <div className="p-4 bg-[#117097] text-white font-black text-xs uppercase tracking-widest italic flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setSubTabLiquidacion('sabado')} 
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${subTabLiquidacion === 'sabado' ? 'bg-[#0a4c68] text-white border border-white/20' : 'bg-[#117097] text-sky-100'}`}
+              >
+                🚜 Jornaleros (Sábado)
+              </button>
+              <button 
+                onClick={() => setSubTabLiquidacion('quincena')} 
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${subTabLiquidacion === 'quincena' ? 'bg-[#0a4c68] text-white border border-white/20' : 'bg-[#117097] text-sky-100'}`}
+              >
+                📅 Fijos (Quincenal)
+              </button>
+            </div>
+            
             <button
               onClick={() => {
-                if (window.confirm("¿Está seguro de iniciar una nueva semana? Esto borrará el registro visual de los ya liquidados para comenzar de cero.")) {
+                if (window.confirm("¿Está seguro de iniciar una nueva semana/quincena? Esto limpiará la vista temporal de los ya pagados.")) {
                   setIdsLiquidadosHoy([]);
                   cargarDatosNomina();
                   mostrarAlerta("Mesa lista para capturar asistencia de la nueva semana", "exito");
                 }
               }}
-              className="px-3 py-1.5 bg-amber-950 hover:bg-black text-white text-[10px] font-black uppercase rounded-lg transition-colors border border-amber-900/50"
+              className="px-3 py-1.5 bg-[#0a4c68] hover:bg-black text-white text-[10px] font-black uppercase rounded-lg transition-colors border border-black/10"
             >
-              🧹 Iniciar Nueva Semana
+              🧹 Limpiar Registro de Sesión
             </button>
           </div>
           <div className="overflow-x-auto">
@@ -539,18 +589,22 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
               <thead>
                 <tr className="bg-gray-300 text-slate-800 uppercase font-black border-b-2 border-gray-400">
                   <th className="p-4">Trabajador / Colaborador</th>
-                  <th className="p-4 text-center">Días Laborados</th>
-                  <th className="p-4 text-right">Total Ganado (+)</th>
+                  <th className="p-4 text-center">Periodo / Días</th>
+                  <th className="p-4 text-right">Monto Devengado (+)</th>
                   <th className="p-4 text-right">Vales / Adelantos (-)</th>
                   <th className="p-4 text-right">Neto Efectivo a Pagar (=)</th>
-                  <th className="p-4 text-center">Acción Sábado</th>
+                  <th className="p-4 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y-2 divide-gray-400 font-bold text-slate-700">
-                {listaLiquidacion.length === 0 ? (
-                  <tr><td colSpan="6" className="p-8 text-center text-gray-400 italic font-bold">No hay labores registradas ni adelantos pendientes esta semana.</td></tr>
+                {(subTabLiquidacion === 'sabado' ? listaLiquidacionSabado : listaLiquidacionQuincena).length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="p-8 text-center text-gray-400 italic font-bold">
+                      No hay labores registradas ni adelantos pendientes en esta sección.
+                    </td>
+                  </tr>
                 ) : (
-                  listaLiquidacion.map((item, idx) => {
+                  (subTabLiquidacion === 'sabado' ? listaLiquidacionSabado : listaLiquidacionQuincena).map((item, idx) => {
                     const yaFuePagadoLocal = item.pagadoLocal;
 
                     return (
@@ -559,51 +613,49 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
                         className={`${
                           yaFuePagadoLocal 
                             ? 'bg-green-50/80 text-slate-400' 
-                            : idx % 2 === 0 ? 'bg-white' : 'bg-amber-50/20'
-                        } hover:bg-yellow-50 transition-colors`}
+                            : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'
+                        } hover:bg-sky-50 transition-colors`}
                       >
-                        <td className={`p-4 font-black uppercase border-l-8 ${yaFuePagadoLocal ? 'border-green-600 text-slate-500' : 'border-amber-700 text-slate-900'}`}>
+                        <td className={`p-4 font-black uppercase border-l-8 ${yaFuePagadoLocal ? 'border-emerald-600 text-slate-500' : 'border-[#117097] text-slate-900'}`}>
                           {item.nombre} 
-                          {yaFuePagadoLocal && <span className="text-[9px] text-green-600 font-black tracking-widest block mt-0.5 animate-pulse">✓ CUENTA LIQUIDADA EN BITÁCORA</span>}
+                          {yaFuePagadoLocal && <span className="text-[9px] text-emerald-600 font-black tracking-widest block mt-0.5 animate-pulse">✓ CUENTA LIQUIDADA EN BITÁCORA</span>}
                         </td>
                         <td className="p-4 text-center text-xs font-black">
                           <span className={`px-2 py-0.5 rounded-md ${yaFuePagadoLocal ? 'bg-gray-200 text-gray-400' : 'bg-slate-200 text-slate-800'}`}>
-                            {yaFuePagadoLocal ? '0' : item.diasTrabajados} días
+                            {item.tipo_pago === 'Quincenal (Fijo)' ? 'Fijo / Quincena' : `${item.diasTrabajados} días`}
                           </span>
                         </td>
-                        <td className={`p-4 text-right font-black text-xs ${yaFuePagadoLocal ? 'text-slate-400 line-through' : 'text-green-700'}`}>
+                        <td className={`p-4 text-right font-black text-xs ${yaFuePagadoLocal ? 'text-slate-400 line-through' : 'text-emerald-700'}`}>
                           {formatoPesos(item.totalGanado)}
                         </td>
                         <td className={`p-4 text-right font-black text-xs ${yaFuePagadoLocal ? 'text-slate-400 line-through' : 'text-red-600'}`}>
                           {formatoPesos(item.totalVales)}
                         </td>
-                        <td className={`p-4 text-right font-black text-sm bg-gray-50/50 ${yaFuePagadoLocal ? 'text-green-700' : 'text-slate-900'}`}>
+                        <td className={`p-4 text-right font-black text-sm bg-slate-50/50 ${yaFuePagadoLocal ? 'text-emerald-700' : 'text-slate-900'}`}>
                           {yaFuePagadoLocal ? formatoPesos(0) : formatoPesos(item.netoPagar)}
                         </td>
                         
-                        {/* ACCIONES DE BOTONES CONFIGURADOS */}
+                        {/* ACCIONES DE BOTONES */}
                         <td className="p-4">
                           <div className="flex justify-center gap-2">
-                            {/* BOTÓN IMPRIMIR PDF: Siempre lee la memoria de lo que acumuló */}
                             <button
                               type="button"
                               onClick={() => generarComprobanteNominaPDF(item)}
-                              className="px-3 py-1.5 bg-slate-800 text-white text-[10px] font-black uppercase rounded-lg hover:bg-black transition-colors flex items-center gap-1 shadow-md"
-                              title="Imprimir Recibo con Firmas"
+                              className="px-3 py-1.5 bg-[#0a4c68] text-white text-[10px] font-black uppercase rounded-lg hover:bg-black transition-colors flex items-center gap-1 shadow-md"
+                              title="Imprimir Recibo"
                             >
                               <span>🖨️ PDF</span>
                             </button>
 
-                            {/* BOTÓN INTERACTIVO DE PAGO CON CONCHULITO VERDE */}
                             {yaFuePagadoLocal ? (
-                              <span className="px-3 py-1.5 bg-green-600 text-white text-[10px] font-black uppercase rounded-lg tracking-wider shadow-sm flex items-center gap-1 border border-green-700">
+                              <span className="px-3 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase rounded-lg tracking-wider shadow-sm flex items-center gap-1 border border-emerald-700">
                                 <span>PAGADO ✓</span>
                               </span>
                             ) : (
                               <button 
                                 type="button"
                                 onClick={() => pagarNominaTrabajador(item)} 
-                                className="px-3 py-1.5 bg-green-700 text-white text-[10px] font-black uppercase rounded-lg hover:bg-green-800 shadow transition-colors active:scale-95 font-black"
+                                className="px-3 py-1.5 bg-emerald-700 text-white text-[10px] font-black uppercase rounded-lg hover:bg-emerald-800 shadow transition-colors active:scale-95 font-black"
                               >
                                 💵 PAGAR
                               </button>
@@ -624,31 +676,47 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
       {tabInterna === 'personal' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* REGISTRAR OPERARIO */}
-          <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-slate-800 h-fit">
+          <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-[#117097] h-fit">
             <h3 className="font-black text-slate-800 uppercase text-xs italic mb-5">
               {formTrabajador.id_editando ? '📝 Editar Datos del Trabajador' : '👤 Ingresar Nuevo Trabajador'}
             </h3>
             <form onSubmit={registrarTrabajador} className="space-y-4">
               <div>
                 <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Nombre Completo</label>
-                <input type="text" className="w-full border-2 p-2.5 rounded-xl font-bold text-sm uppercase outline-none focus:border-slate-800" value={formTrabajador.nombre_completo} onChange={e => setFormTrabajador({...formTrabajador, nombre_completo: e.target.value})} required placeholder="Ej: CARLOS MARIO RESTREPO" />
+                <input type="text" className="w-full border-2 p-2.5 rounded-xl font-bold text-sm uppercase outline-none focus:border-[#117097]" value={formTrabajador.nombre_completo} onChange={e => setFormTrabajador({...formTrabajador, nombre_completo: e.target.value})} required placeholder="Ej: CARLOS MARIO RESTREPO" />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Cédula</label>
-                  <input type="text" className="w-full border-2 p-2.5 rounded-xl font-bold text-xs outline-none focus:border-slate-800" value={formTrabajador.cedula} onChange={e => setFormTrabajador({...formTrabajador, cedula: e.target.value})} required placeholder="Sin puntos" />
+                  <input type="text" className="w-full border-2 p-2.5 rounded-xl font-bold text-xs outline-none focus:border-[#117097]" value={formTrabajador.cedula} onChange={e => setFormTrabajador({...formTrabajador, cedula: e.target.value})} required placeholder="Sin puntos" />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Teléfono</label>
-                  <input type="text" className="w-full border-2 p-2.5 rounded-xl font-bold text-xs outline-none focus:border-slate-800" value={formTrabajador.telefono} onChange={e => setFormTrabajador({...formTrabajador, telefono: e.target.value})} placeholder="Opcional" />
+                  <input type="text" className="w-full border-2 p-2.5 rounded-xl font-bold text-xs outline-none focus:border-[#117097]" value={formTrabajador.telefono} onChange={e => setFormTrabajador({...formTrabajador, telefono: e.target.value})} placeholder="Opcional" />
                 </div>
               </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Tarifa Base por Jornal Diario</label>
-                <input type="number" className="w-full border-2 p-2.5 rounded-xl font-black text-sm text-slate-800 outline-none focus:border-slate-800" value={formTrabajador.pago_jornal_base} onChange={e => setFormTrabajador({...formTrabajador, pago_jornal_base: e.target.value})} required placeholder="Ej: 65000" />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Frecuencia de Pago</label>
+                  <select 
+                    className="w-full border-2 p-2.5 rounded-xl font-bold bg-white text-xs outline-none focus:border-[#117097]" 
+                    value={formTrabajador.tipo_pago} 
+                    onChange={e => setFormTrabajador({...formTrabajador, tipo_pago: e.target.value})}
+                  >
+                    {tiposPago.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">
+                    {formTrabajador.tipo_pago === 'Quincenal (Fijo)' ? 'Sueldo Quincenal' : 'Tarifa Jornal Diario'}
+                  </label>
+                  <input type="number" className="w-full border-2 p-2.5 rounded-xl font-black text-sm text-slate-800 outline-none focus:border-[#117097]" value={formTrabajador.pago_jornal_base} onChange={e => setFormTrabajador({...formTrabajador, pago_jornal_base: e.target.value})} required placeholder="Ej: 65000" />
+                </div>
               </div>
+
               <div className="flex gap-2">
-                <button type="submit" className={`flex-1 py-3.5 text-white font-black rounded-xl uppercase text-xs tracking-wider shadow-md transition-colors ${formTrabajador.id_editando ? 'bg-amber-600 hover:bg-amber-700' : 'bg-slate-800 hover:bg-slate-900'}`}>
+                <button type="submit" className={`flex-1 py-3.5 text-white font-black rounded-xl uppercase text-xs tracking-wider shadow-md transition-colors ${formTrabajador.id_editando ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[#117097] hover:bg-[#0a4c68]'}`}>
                   {formTrabajador.id_editando ? '💾 Actualizar Datos' : '💾 Guardar Colaborador'}
                 </button>
                 {formTrabajador.id_editando && <button type="button" onClick={limpiarFormTrabajador} className="px-4 bg-gray-200 rounded-xl font-black text-xs text-gray-600">X</button>}
@@ -659,7 +727,7 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
           <div className="lg:col-span-2 bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-200">
             <div className="p-4 bg-slate-800 text-white font-black text-xs uppercase tracking-widest italic flex justify-between items-center">
               <span>Directorio Interno de Operarios</span>
-              <span className="text-[10px] bg-slate-600 px-2 py-0.5 rounded-md">Activos</span>
+              <span className="text-[10px] bg-[#117097] px-2 py-0.5 rounded-md font-bold uppercase">Activos</span>
             </div>
             <div className="divide-y-2 divide-gray-200 max-h-[480px] overflow-y-auto">
               {trabajadores.length === 0 ? (
@@ -670,10 +738,15 @@ export default function Nomina({ mostrarAlerta, listaInvernaderos }) {
                     <div className="uppercase">
                       <p className="font-black text-slate-900 text-sm">{t.nombre_completo}</p>
                       <p className="text-[10px] text-gray-400 font-bold mt-0.5">C.C. {t.cedula || 'N/A'} — Tel: {t.telefono || 'N/A'}</p>
+                      <span className="inline-block mt-1 bg-sky-100 text-[#117097] text-[8px] px-2 py-0.5 rounded font-black tracking-wider uppercase">
+                        {t.tipo_pago || 'Sábado (Jornalero)'}
+                      </span>
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="text-right bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
-                        <p className="text-slate-400 font-black text-[8px] uppercase tracking-tighter">Jornal Diario</p>
+                        <p className="text-slate-400 font-black text-[8px] uppercase tracking-tighter">
+                          {t.tipo_pago === 'Quincenal (Fijo)' ? 'Sueldo Fijo' : 'Jornal'}
+                        </p>
                         <p className="font-black text-slate-800 text-xs mt-0.5">{formatoPesos(t.pago_jornal_base)}</p>
                       </div>
                       <div className="flex gap-1.5">
