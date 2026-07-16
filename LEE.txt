@@ -1,0 +1,21 @@
+VITE_SUPABASE_URL=https://qsjsxkhrmvzfowrbodts.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzanN4a2hybXZ6Zm93cmJvZHRzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxMjQxNzQsImV4cCI6MjA5OTcwMDE3NH0.HtiV3uDoqIssrdjhdkb1Epvh7PcOIHrRDDkO7N3NRbA
+==ORIGINAL===
+
+
+sb_publishable_sXGwpBReNplhxbjcl8JwBw_KpwPYwCY
+
+qsjsxkhrmvzfowrbodts
+
+# Inicializar git si no lo está (o para asegurar el estado)
+git init
+
+# Vincular al nuevo repositorio (reemplaza con tu usuario de GitHub real)
+git remote remove origin 2> $null
+git remote add origin https://github.com/IntepeGit/invernaderofm-web.git
+
+# Subir tu código
+git add.
+git commit -m "Primer commit: Estructura limpia para InvernaderoFM"
+git branch -M main
+git push -u origin main

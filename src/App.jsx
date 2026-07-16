@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import jsPDF from 'jspdf'
-import autoTable from 'jspdf-autotable' // Importación explícita sin punto y coma
+import autoTable from 'jspdf-autotable' 
 
 // 🛡️ Importación del componente de protección local (sin rutas)
 import ProtectedRoute from './components/ProtectedRoute.jsx'
@@ -401,15 +401,17 @@ function App() {
         return;
       }
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [105, 148] });
-      doc.setDrawColor(0, 80, 0); doc.setLineWidth(0.8); doc.rect(4, 4, 97, 140); 
+      // Bordes en el azul del invernadero (17, 112, 151)
+      doc.setDrawColor(17, 112, 151); doc.setLineWidth(0.8); doc.rect(4, 4, 97, 140); 
       doc.addImage('/Logopapel.png', 'PNG', 42.5, 7, 20, 20); 
       doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text("N° Remisión:", 10, 12);
       doc.setFont("helvetica", "normal"); doc.text(`${remision.numero_remision || 'N/A'}`, 32, 12);
-      doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setDrawColor(0, 80, 0);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setDrawColor(17, 112, 151);
       doc.text("REMISIÓN DE VENTA", 52.5, 30, { align: "center" });
 
       const altoFila = 5; const yBase = 32.5;
-      doc.setFillColor(180, 220, 180); doc.rect(7, yBase, 91, altoFila, 'F'); doc.rect(7, yBase + (altoFila * 2), 91, altoFila, 'F');
+      // Fondo muy suave azul-celeste (215, 235, 245)
+      doc.setFillColor(215, 235, 245); doc.rect(7, yBase, 91, altoFila, 'F'); doc.rect(7, yBase + (altoFila * 2), 91, altoFila, 'F');
       doc.setLineWidth(0.2); doc.rect(7, yBase, 91, altoFila * 4);
       doc.line(7, yBase + altoFila, 98, yBase + altoFila); doc.line(7, yBase + (altoFila * 2), 98, yBase + (altoFila * 2)); doc.line(7, yBase + (altoFila * 3), 98, yBase + (altoFila * 3));
       doc.line(50, yBase, 50, yBase + (altoFila * 4));
@@ -438,7 +440,8 @@ function App() {
           new Intl.NumberFormat('es-CO').format((item.cantidad || 0) * (item.precio_unitario || 0))
         ]),
         theme: 'grid', styles: { fontSize: 7, cellPadding: 1.2, fontStyle: 'bold' },
-        headStyles: { fillColor: [0, 80, 0], textColor: [255, 255, 255] }
+        // Cabecera en azul principal
+        headStyles: { fillColor: [17, 112, 151], textColor: [255, 255, 255] }
       });
 
       const finalY = doc.lastAutoTable.finalY + 8;
@@ -453,16 +456,18 @@ function App() {
   const imprimirGastoPDF = (gasto) => {
     try {
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [105, 148] });
-      doc.setDrawColor(0, 80, 0); doc.setLineWidth(0.8); doc.rect(4, 4, 97, 140);
+      // Bordes en el azul del invernadero (17, 112, 151)
+      doc.setDrawColor(17, 112, 151); doc.setLineWidth(0.8); doc.rect(4, 4, 97, 140);
       doc.addImage('/Logopapel.png', 'PNG', 42.5, 7, 20, 20);
       doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text("Comp. N°:", 10, 12);
       doc.setFont("helvetica", "normal"); doc.text(`${gasto.numero_comprobante || gasto.id || 'S/N'}`, 28, 12);
-      doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(0, 80, 0);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(17, 112, 151);
       doc.text("COMPROBANTE DE GASTO", 52.5, 30, { align: "center" });
 
       const altoFila = 5; const yBase = 35;
-      doc.setFillColor(180, 220, 180); doc.rect(7, yBase, 91, altoFila, 'F'); 
-      doc.setDrawColor(0, 80, 0); doc.setLineWidth(0.2); doc.rect(7, yBase, 91, altoFila * 2); 
+      // Celeste claro (215, 235, 245)
+      doc.setFillColor(215, 235, 245); doc.rect(7, yBase, 91, altoFila, 'F'); 
+      doc.setDrawColor(17, 112, 151); doc.setLineWidth(0.2); doc.rect(7, yBase, 91, altoFila * 2); 
       doc.line(7, yBase + altoFila, 98, yBase + altoFila); doc.line(50, yBase, 50, yBase + (altoFila * 2)); 
 
       const yOffset = 3.5;
@@ -476,7 +481,7 @@ function App() {
       doc.setFont("helvetica", "normal"); doc.text(`${nombreProv}`, 27, yBase + altoFila + yOffset);
 
       let yDetalles = yBase + (altoFila * 2);
-      doc.setFillColor(180, 220, 180); doc.rect(7, yDetalles, 91, altoFila, 'F');
+      doc.setFillColor(215, 235, 245); doc.rect(7, yDetalles, 91, altoFila, 'F');
       doc.rect(7, yDetalles, 91, altoFila * 2); doc.line(7, yDetalles + altoFila, 98, yDetalles + altoFila);
 
       const nit = gasto.nit_cc || gasto.proveedores?.nit_cc || 'N/A';
@@ -496,10 +501,10 @@ function App() {
       doc.setFontSize(8);
       autoTable(doc, {
         startY: yDetalles + (altoFila * 2) + 4, margin: { left: 7, right: 1 }, 
-        head: [["Cant.", "Unidad", "Detalle Pago", "Precio Unit.", "Monto Total"]],
+        head: [["Cant.", "Unidad", "Detail Pago", "Precio Unit.", "Monto Total"]],
         body: [[gasto.cantidad || 0, gasto.unidad_medida || "Unidad", gasto.descripcion || "Gasto", `$${(gasto.precio_unitario || 0).toLocaleString('es-CO')}`, `$${(gasto.monto || 0).toLocaleString('es-CO')}`]],
-        theme: 'grid', styles: { fontSize: 7, cellPadding: 3, valign: 'middle', overflow: 'linebreak', lineWidth: 0.2, lineColor: [0, 80, 0] },
-        headStyles: { fillColor: [0, 80, 0], textColor: [255, 255, 255], halign: 'center', valign: 'middle', fontStyle: 'bold' },
+        theme: 'grid', styles: { fontSize: 7, cellPadding: 3, valign: 'middle', overflow: 'linebreak', lineWidth: 0.2, lineColor: [17, 112, 151] },
+        headStyles: { fillColor: [17, 112, 151], textColor: [255, 255, 255], halign: 'center', valign: 'middle', fontStyle: 'bold' },
         columnStyles: { 0: { cellWidth: 9, halign: 'center' }, 1: { cellWidth: 14, halign: 'center' }, 2: { cellWidth: 35 }, 3: { cellWidth: 15, halign: 'right' }, 4: { cellWidth: 19, halign: 'right' } }
       });
 
@@ -530,9 +535,10 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  // 🫐 NavItem unificado con tu color exacto (#3B4E38) para inactivos y variantes contrastantes
   const NavItem = ({ id, label, icon }) => (
     <button onClick={() => { setTab(id); setIsMenuOpen(false); setShowConfigSubmenu(false); }} 
-      className={`flex items-center gap-3 w-full p-4 rounded-xl transition ${tab === id ? 'bg-green-700 text-white' : 'text-green-100 hover:bg-green-800'}`}>
+      className={`flex items-center gap-3 w-full p-4 rounded-xl transition ${tab === id ? 'bg-[#0a4c68] text-white shadow-inner font-black' : 'text-[#b6e2f8] hover:bg-[#0a4c68] hover:text-white'}`}>
       <span className="text-xl">{icon}</span> <span className="font-bold text-sm capitalize">{label}</span>
     </button>
   )
@@ -543,22 +549,23 @@ function App() {
   return (
     <ProtectedRoute session={session}>
       <div className="flex min-h-screen bg-slate-50 font-sans overflow-hidden">
-        <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-green-900 shadow-2xl transform ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static transition-transform duration-300 flex flex-col`}>
+        {/* 🫐 Sidebar unificado exactamente a tu color de imagen (#3B4E38) */}
+        <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#3B4E38] shadow-2xl transform ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static transition-transform duration-300 flex flex-col`}>
   
-            {/* 🎯 ENCABEZADO MEJORADO CON INDICADOR DE ROL EN PANTALLA */}
-            <div className="p-6 text-center border-b border-green-800 flex flex-col items-center justify-center gap-2">
-              <h2 className="text-white font-black text-2xl tracking-tighter">🚜 INVERNADERO FM</h2>
+            {/* 🎯 Encabezado con bordes sutiles en azul más oscuro para dar profundidad */}
+            <div className="p-6 text-center border-b border-[#0d5978] flex flex-col items-center justify-center gap-2">
+              <h2 className="text-white font-black text-2xl tracking-tighter">🫐 INVERNADERO FM</h2>
               
               {userRole ? (
                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-inner ${
                   userRole === 'admin' 
                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' 
-                    : 'bg-green-700/50 text-green-200 border-green-600/40'
+                    : 'bg-[#0a4c68] text-[#d6eefc] border-[#083a50]'
                 }`}>
                   {userRole === 'admin' ? '👑 Administrador' : '👨‍🌾 Operario'}
                 </span>
               ) : (
-                <span className="text-[10px] text-green-300 animate-pulse font-bold uppercase tracking-widest">Cargando perfil...</span>
+                <span className="text-[10px] text-[#b6e2f8] animate-pulse font-bold uppercase tracking-widest">Cargando perfil...</span>
               )}
             </div>
           <nav className="p-4 space-y-2 flex-1 overflow-y-auto">
@@ -589,7 +596,7 @@ function App() {
             {userRole === 'admin' && (
               <div className="space-y-1">
                 <button onClick={() => setShowConfigSubmenu(!showConfigSubmenu)} 
-                  className={`flex items-center justify-between w-full p-4 rounded-xl transition ${tab.startsWith('config-') ? 'bg-green-800 text-white' : 'text-green-100 hover:bg-green-800'}`}>
+                  className={`flex items-center justify-between w-full p-4 rounded-xl transition ${tab.startsWith('config-') ? 'bg-[#0a4c68] text-white' : 'text-[#b6e2f8] hover:bg-[#0a4c68] hover:text-white'}`}>
                   <div className="flex items-center gap-3">
                     <span className="text-xl">⚙️</span>
                     <span className="font-bold text-sm">Configuración</span>
@@ -598,25 +605,26 @@ function App() {
                 </button>
                 {showConfigSubmenu && (
                   <div className="pl-6 space-y-1 animate-in slide-in-from-top-2 duration-200">
-                    <button onClick={() => { setTab('config-inv'); setIsMenuOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-inv' ? 'text-white bg-green-700' : 'text-green-300 hover:bg-green-800'}`}>🏠 Invernaderos</button>
-                    <button onClick={() => { setTab('config-cli'); setIsMenuOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-cli' ? 'text-white bg-green-700' : 'text-green-300 hover:bg-green-800'}`}>👥 Clientes</button>
-                    <button onClick={() => { setTab('config-prov'); setIsMenuOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-prov' ? 'text-white bg-green-700' : 'text-green-300 hover:bg-green-800'}`}>🚚 Proveedores</button>
-                    <button onClick={() => { setTab('config-cosecha'); setIsMenuOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-cosecha' ? 'text-white bg-green-700' : 'text-green-300 hover:bg-green-800'}`}>🌿 Parámetros Cosecha</button>
+                    <button onClick={() => { setTab('config-inv'); setIsMenuOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-inv' ? 'text-white bg-[#0a4c68]' : 'text-[#b6e2f8] hover:bg-[#0a4c68]'}`}>🏠 Invernaderos</button>
+                    <button onClick={() => { setTab('config-cli'); setIsMenuOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-cli' ? 'text-white bg-[#0a4c68]' : 'text-[#b6e2f8] hover:bg-[#0a4c68]'}`}>👥 Clientes</button>
+                    <button onClick={() => { setTab('config-prov'); setIsMenuOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-prov' ? 'text-white bg-[#0a4c68]' : 'text-[#b6e2f8] hover:bg-[#0a4c68]'}`}>🚚 Proveedores</button>
+                    <button onClick={() => { setTab('config-cosecha'); setIsMenuOpen(false); }} className={`flex items-center gap-3 w-full p-3 rounded-lg text-xs font-bold transition ${tab === 'config-cosecha' ? 'text-white bg-[#0a4c68]' : 'text-[#b6e2f8] hover:bg-[#0a4c68]'}`}>🌿 Parámetros Cosecha</button>
                   </div>
                 )}
               </div>
             )}
             
-            <button onClick={() => supabase.auth.signOut()} className="flex items-center gap-3 w-full p-4 rounded-xl text-red-200 hover:bg-red-900/50 mt-10">
+            <button onClick={() => supabase.auth.signOut()} className="flex items-center gap-3 w-full p-4 rounded-xl text-red-200 hover:bg-red-950/20 mt-10">
               <span>🚪</span> <span className="text-sm font-bold">Cerrar Sesión</span>
             </button>
           </nav>
         </aside>
 
         <div className="flex-1 flex flex-col h-screen overflow-hidden">
+          {/* Header con títulos en azul oscuro de alto contraste `text-[#0a4c68]` */}
           <header className="bg-white p-4 shadow-sm flex justify-between items-center lg:px-10">
-            <button className="lg:hidden text-2xl p-2 text-green-900" onClick={() => setIsMenuOpen(true)}>☰</button>
-            <h1 className="text-xl font-black text-green-900 tracking-tight uppercase">{tab.replace('config-', 'Configuración: ').replace('reporte', 'Reporte de Ventas').replace('inventario', 'Inventario de Bodega').replace('cosecha', 'Cosecha Diaria').replace('nomina', 'Control de Nómina')}</h1>
+            <button className="lg:hidden text-2xl p-2 text-[#0a4c68]" onClick={() => setIsMenuOpen(true)}>☰</button>
+            <h1 className="text-xl font-black text-[#0a4c68] tracking-tight uppercase">{tab.replace('config-', 'Configuración: ').replace('reporte', 'Reporte de Ventas').replace('inventario', 'Inventario de Bodega').replace('cosecha', 'Cosecha Diaria').replace('nomina', 'Control de Nómina')}</h1>
             <div className="w-10"></div>
           </header>
 
@@ -731,10 +739,11 @@ function App() {
           </main>
         </div>
 
+        {/* Notificación en azul con bordes coordinados */}
         {notificacion.visible && (
-          <div className="fixed bottom-10 right-10 z-[100] bg-white border border-green-100 p-6 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5">
+          <div className="fixed bottom-10 right-10 z-[100] bg-white border border-[#3B4E38]/20 p-6 rounded-2xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5">
             <span className="text-2xl">{notificacion.tipo === 'exito' ? '✅' : '❌'}</span>
-            <p className="text-sm font-bold text-green-800">{notificacion.mensaje}</p>
+            <p className="text-sm font-bold text-[#3B4E38]">{notificacion.mensaje}</p>
           </div>
         )}
       </div>

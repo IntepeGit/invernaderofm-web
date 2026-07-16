@@ -1,0 +1,140 @@
+Ve a nodejs.org y descarga la versión LTS (la recomendada, no la más nueva). Esto instala también npm, el gestor de paquetes.
+
+Verificar que quedó bien:
+node --version   # debe mostrar v20.x o superior
+npm --version    # debe mostrar 10.x o superior
+2
+Instalar VS Code Gratis
+Ve a code.visualstudio.com y descarga para tu sistema operativo.
+
+Extensiones a instalar dentro de VS Code (Ctrl+Shift+X):
+ES7+ React/Redux/React-Native snippets
+Tailwind CSS IntelliSense
+Prettier - Code formatter
+GitLens
+Supabase (oficial)
+3
+Instalar Git Gratis
+Ve a git-scm.com → Download. Luego crea cuenta en github.com si no tienes.
+
+Configurar tu identidad:
+git config --global user.name "Tu Nombre"
+git config --global user.email "tu@email.com"
+4
+Instalar Supabase CLI Gratis
+npm install -g supabase
+Esto te permite manejar tu base de datos desde la terminal.
+
+======================================
+CREAR PROYECTO DANDOLE EL NOMBRE TOMATERA-WEB
+npm create vite@latest tomatera-web -- --template react
+
+CREAR CON CARPETA VACIA YA CON EL NOMBRE DECEADO ---OJO
+npm create vite@latest . -- --template react
+
+INSTALA LIBRERIA  - Instalar dependencias base:
+npm install
+
+Instalar el conector de Supabase:
+npm install @supabase/supabase-js
+==============================================
+cd C:\Users\PC-INTEPE\Desktop\GRANJA_WP\granjawp-web
+cd C:\Users\PC-INTEPE\Desktop\TOMATERA\tomatera-web
+
+npm run dev
+
+http://localhost:5173/
+=======================================================
+===========MANUAL DE INSTALACION GEMINI================
+# Conexión con Supabase
+npm install @supabase/supabase-js
+
+# Librería para las gráficas del Dashboard
+npm install recharts
+
+# Librerías para la generación de reportes en PDF
+npm install jspdf jspdf-autotable
+
+# Tailwind CSS (Estilos y diseño profesional)
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+
+# Comndo mientras se Programa
+# Iniciar el servidor local de desarrollo
+npm run dev
+
+# Generar la carpeta 'dist' con los archivos optimizados
+npm run build
+
+# (Opcional) Probar localmente cómo quedó la versión de producción
+npm run preview
+# Borrar la carpeta de librerías (en caso de errores graves)
+rd /s /q node_modules
+
+# Reinstalar todo desde cero
+npm install
+
+Comandos de Instalación de Librerías (NPM)
+Debes ejecutar estos comandos dentro de la carpeta de tu proyecto para que el archivo package.json se actualice y las carpetas de código se descarguen:
+
+# 1. Instalar la librería de conexión con la base de datos (Supabase)
+npm install @supabase/supabase-js
+
+# 2. Instalar la librería para el Dashboard y Gráficas de barras
+npm install recharts
+
+# 3. Instalar las librerías para generar reportes en PDF y tablas automáticas
+npm install jspdf jspdf-autotable
+
+# 4. Instalar el framework de diseño y estilos (Tailwind CSS)
+npm install -D tailwindcss postcss autoprefixer
+
+# 5. Inicializar la configuración de Tailwind (Crea los archivos de control de diseño)
+npx tailwindcss init -p
+
+# 1. Instalar la librería de conexión con la base de datos (Supabase)
+npm install @supabase/supabase-js
+
+# 2. Instalar la librería para el Dashboard y Gráficas de barras
+npm install recharts
+
+# 3. Instalar las librerías para generar reportes en PDF y tablas automáticas
+npm install jspdf jspdf-autotable
+
+# 4. Instalar el framework de diseño y estilos (Tailwind CSS)
+npm install -D tailwindcss postcss autoprefixer
+
+# 5. Inicializar la configuración de Tailwind (Crea los archivos de control de diseño)
+npx tailwindcss init -p
+
+Resumen de Aplicativos a Instalar (Programas de Windows)
+Para que esos comandos funcionen en tu sistema, recuerda que debes haber instalado previamente estos tres programas:
+
+Node.js (Versión LTS): Es el más importante; sin él, el comando npm no existe.  
+Git for Windows: Necesario para descargar algunas librerías y para subir tu código a Netlify o GitHub.  
+Visual Studio Code: El editor recomendado para manejar la terminal de comandos de forma integrada.
+¿Cómo verificar que todo está instalado?
+
+Si alguna vez tienes dudas de si te falta alguna librería, puedes abrir tu archivo package.json en la raíz del proyecto. Ahí deberías ver una lista llamada "dependencies" donde aparecerán supabase, recharts, jspdf, entre otros.
+Si el archivo existe pero la aplicación no arranca, simplemente ejecuta:
+
+===EJECUTA LA APP===
+npm run dev
+ http://localhost:5173/
+=========================
+
+Bash
+npm install
+=================ACTUALIZA LA APP EN GITHUB========================
+git add .; git commit -m "UpdateDiseñoF"; git push origin main
+===================================================================
+git config --global user.name "William Penagos"
+git config --global user.email "gitwilliamp@gmail.com"
+
+
+==================================================
+administrador@invernaderofm.com   ==>fm2012    381cf95b-a092-4bc3-b8fa-80a50ddbc524
+operario@invernaderofm.com	  ==>op2468    140ee689-3fca-42f5-bc18-d9c988265ec0	
+
+
+
