@@ -59,10 +59,16 @@ export default function Dashboard({ listaInvernaderos, datosDespachos, datosEgre
   const idsDespachos = despachosInv.map(d => d.id?.toString());
   const pagosInv = datosPagos?.filter(p => idsDespachos.includes(p.despacho_id?.toString())) || [];
 
+  // --- 🧮 CÁLCULO DE TOTALES ESPECÍFICOS PARA EL EXPLORADOR ---
+  const totalRemisiones = despachosInv.reduce((acc, d) => acc + (d.total_venta || 0), 0);
+  const totalAbonos = pagosInv.reduce((acc, p) => acc + (p.monto || 0), 0);
+  const totalGastosInsumos = gastosInv.reduce((acc, g) => acc + (g.monto || 0), 0);
+  const totalManoObra = nominaInv.reduce((acc, n) => acc + (parseFloat(n.valor_pagar) || 0), 0);
+
   return (
     <div className="space-y-4 animate-in fade-in duration-500 pb-10 text-slate-800">
       
-      {/* 1. KPIs GLOBALES COMPRIMIDOS (UNIFICADOS AL AZUL OCEANO) */}
+      {/* 1. KPIs GLOBALES COMPRIMIDOS */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-white p-3.5 rounded-2xl shadow-sm border-l-4 border-[#117097]">
           <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Ingresos Totales</p>
@@ -177,7 +183,7 @@ export default function Dashboard({ listaInvernaderos, datosDespachos, datosEgre
         </div>
       </div>
 
-      {/* 4. SECCIÓN EXPLORADOR REFINADA Y COMPACTA */}
+      {/* 4. SECCIÓN EXPLORADOR REFINADA Y COMPACTA (CON TOTALES INCORPORADOS EN LA CABECERA) */}
       <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-black text-slate-700 text-xs uppercase tracking-wider">Explorador de Detalles</h3>
@@ -193,9 +199,13 @@ export default function Dashboard({ listaInvernaderos, datosDespachos, datosEgre
 
         {invSeleccionado ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* Remisiones */}
+            
+            {/* 1. Remisiones */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
-              <div className="bg-[#117097] p-2 text-white font-black text-[10px] uppercase tracking-wider text-center">Remisiones</div>
+              <div className="bg-[#117097] p-2 text-white font-black text-[10px] uppercase tracking-wider flex justify-between items-center px-3">
+                <span>Remisiones</span>
+                <span className="bg-white/20 px-2 py-0.5 rounded text-[9px] font-black tracking-tight">{formatoPesos(totalRemisiones)}</span>
+              </div>
               <div className="max-h-40 overflow-y-auto">
                 <table className="w-full text-[10px]">
                   <tbody className="divide-y">
@@ -210,9 +220,12 @@ export default function Dashboard({ listaInvernaderos, datosDespachos, datosEgre
               </div>
             </div>
 
-            {/* Recaudado */}
+            {/* 2. Recaudado */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
-              <div className="bg-amber-500 p-2 text-white font-black text-[10px] uppercase tracking-wider text-center">Abonos</div>
+              <div className="bg-amber-500 p-2 text-white font-black text-[10px] uppercase tracking-wider flex justify-between items-center px-3">
+                <span>Abonos</span>
+                <span className="bg-white/20 px-2 py-0.5 rounded text-[9px] font-black tracking-tight">{formatoPesos(totalAbonos)}</span>
+              </div>
               <div className="max-h-40 overflow-y-auto">
                 <table className="w-full text-[10px]">
                   <tbody className="divide-y">
@@ -227,9 +240,12 @@ export default function Dashboard({ listaInvernaderos, datosDespachos, datosEgre
               </div>
             </div>
 
-            {/* Gastos Insumos */}
+            {/* 3. Gastos Insumos */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
-              <div className="bg-slate-400 p-2 text-white font-black text-[10px] uppercase tracking-wider text-center">Gastos Insumos</div>
+              <div className="bg-slate-400 p-2 text-white font-black text-[10px] uppercase tracking-wider flex justify-between items-center px-3">
+                <span>Gastos Insumos</span>
+                <span className="bg-white/20 px-2 py-0.5 rounded text-[9px] font-black tracking-tight">{formatoPesos(totalGastosInsumos)}</span>
+              </div>
               <div className="max-h-40 overflow-y-auto">
                 <table className="w-full text-[10px]">
                   <tbody className="divide-y">
@@ -244,9 +260,12 @@ export default function Dashboard({ listaInvernaderos, datosDespachos, datosEgre
               </div>
             </div>
 
-            {/* Mano de Obra */}
+            {/* 4. Mano de Obra */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
-              <div className="bg-sky-700 p-2 text-white font-black text-[10px] uppercase tracking-wider text-center">Mano de Obra</div>
+              <div className="bg-sky-700 p-2 text-white font-black text-[10px] uppercase tracking-wider flex justify-between items-center px-3">
+                <span>Mano de Obra</span>
+                <span className="bg-white/20 px-2 py-0.5 rounded text-[9px] font-black tracking-tight">{formatoPesos(totalManoObra)}</span>
+              </div>
               <div className="max-h-40 overflow-y-auto">
                 <table className="w-full text-[10px]">
                   <tbody className="divide-y">
@@ -262,6 +281,7 @@ export default function Dashboard({ listaInvernaderos, datosDespachos, datosEgre
                 </table>
               </div>
             </div>
+            
           </div>
         ) : (
           <div className="text-center py-4 bg-white rounded-xl border border-dashed border-slate-200">

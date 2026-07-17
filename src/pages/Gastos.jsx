@@ -17,6 +17,7 @@ export default function Gastos({
 }) {
   const categorias = ["Mano de obra", "Insumo Agricola", "Flete", "Mto (Mantenimiento)", "S.Publicos", "Plantas", "Plasticos", "Viaticos","Arriendos", "Quincena", "Otros"];
   const unidades = ["Canastilla", "Kilo", "Bulto", "Litro", "Jornal", "Unidad", "Hora", "Otra", "Caja", "Garrafa", "Galon"];
+  const formasPago = ["Efectivo", "Bre-B (Pago Inmediato)", "Bancolombia Ahorros", "Bancolombia Corriente", "Nequi", "Daviplata", "Banco de Bogotá", "Colpatria", "Davivienda", "Otro"];
 
   // Formateador de moneda colombiana estricto para visualización estática
   const formatoPesos = (valor) => new Intl.NumberFormat('es-CO', { 
@@ -44,6 +45,20 @@ export default function Gastos({
     }
   }, [gastoForm.cantidad, gastoForm.precio_unitario, setGastoForm]);
 
+  // ⚡ INTERCEPTOR MANUAL MODIFICADO: Autocompleta tanto la Forma de Pago como el Número de Cuenta editable
+  const handleCambioProveedor = (idSeleccionado) => {
+    const prov = listaProveedores?.find(p => p.id?.toString() === idSeleccionado?.toString());
+    
+    setGastoForm(prev => ({
+      ...prev,
+      proveedor_id: idSeleccionado,
+      // Autocompleta el banco predeterminado si existe
+      forma_pago: (!prev.id_editando && prov && prov.banco) ? prov.banco : 'Efectivo',
+      // Autocompleta el número de cuenta/llave en el formulario para que sea editable
+      numero_cuenta: prov ? (prov.numero_cuenta || '') : ''
+    }));
+  };
+
   // Preparar edición cargando los datos al formulario izquierdo
   const prepararEdicion = (g) => {
     setGastoForm({
@@ -58,7 +73,9 @@ export default function Gastos({
       fecha: g.fecha_gasto || g.fecha || new Date().toISOString().split('T')[0],
       cantidad: g.cantidad || '',
       unidad_medida: g.unidad_medida || 'Unidad',
-      precio_unitario: g.precio_unitario || ''
+      precio_unitario: g.precio_unitario || '',
+      forma_pago: g.forma_pago || 'Efectivo',
+      numero_cuenta: g.numero_cuenta || '' // 👈 Carga el número de cuenta guardado en el egreso
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -77,12 +94,13 @@ export default function Gastos({
       fecha: new Date().toISOString().split('T')[0], 
       cantidad: '', 
       unidad_medida: 'Unidad', 
-      precio_unitario: '' 
+      precio_unitario: '',
+      forma_pago: 'Efectivo',
+      numero_cuenta: ''
     });
   };
 
-  // --- FUNCIÓN PARA EXPORTAR GASTOS A EXCEL (Con tonos azules modernos) ---
-  // --- FUNCIÓN PARA EXPORTAR GASTOS A EXCEL (CON FILA DE TOTAL AUTOMÁTICA) ---
+  // --- FUNCIÓN PARA EXPORTAR GASTOS A EXCEL ---
   const exportarAExcel = async () => {
     if (!datosEgresos || datosEgresos.length === 0) {
       mostrarAlerta("No hay datos de gastos para exportar", "error");
@@ -100,6 +118,7 @@ export default function Gastos({
         { header: 'PROVEEDOR', key: 'proveedor', width: 25 },
         { header: 'NIT / CC', key: 'nit', width: 16 },
         { header: 'CATEGORÍA', key: 'categoria', width: 20 },
+        { header: 'FORMA DE PAGO', key: 'forma_pago', width: 22 },
         { header: 'DESCRIPCIÓN / DETALLE', key: 'descripcion', width: 35 },
         { header: 'CANTIDAD', key: 'cantidad', width: 12 },
         { header: 'UNIDAD MEDIDA', key: 'unidad', width: 16 },
@@ -108,7 +127,6 @@ export default function Gastos({
         { header: 'NOTA / OBSERVACIONES', key: 'nota', width: 30 }
       ];
 
-      // Insertar los registros de gastos
       datosEgresos.forEach((g) => {
         const proveedor = g.nombre_proveedor || g.proveedores?.nombre_completo || g.proveedores?.nombre || 'Particular';
         const nit = g.nit_cc || g.proveedores?.nit_cc || 'N/A';
@@ -121,6 +139,7 @@ export default function Gastos({
           proveedor: proveedor.toUpperCase(),
           nit: nit,
           categoria: (g.categoria || 'Sin Categoría').toUpperCase(),
+          forma_pago: (g.forma_pago || 'Efectivo').toUpperCase(),
           descripcion: g.descripcion || '',
           cantidad: parseFloat(g.cantidad) || 0,
           unidad: g.unidad_medida || 'Unidad',
@@ -130,61 +149,53 @@ export default function Gastos({
         });
       });
 
-      // 🧮 AGREGAR LA FILA DE TOTALES DINÁMICA
-      const totalRowNumber = worksheet.rowCount + 1; // Fila inmediatamente después de los datos
-      const ultimaFilaDatos = worksheet.rowCount;    // La fila donde terminan los registros
+      const totalRowNumber = worksheet.rowCount + 1;
+      const ultimaFilaDatos = worksheet.rowCount;
 
-      // Añadir fila con la fórmula SUMA apuntando dinámicamente a la columna K (Monto Total)
       const totalRow = worksheet.addRow({
         descripcion: 'TOTAL GENERAL DE GASTOS:',
-        monto: { formula: `=SUM(K2:K${ultimaFilaDatos})` } // Fórmula nativa de Excel
+        monto: { formula: `=SUM(L2:L${ultimaFilaDatos})` } 
       });
 
-      // Estilo de la cabecera (Fila 1)
       const headerRow = worksheet.getRow(1);
       headerRow.height = 24;
       headerRow.eachCell((cell) => {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF117097' } }; // Azul Océano
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF117097' } }; 
         cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
       });
 
-      // Estilo y formato de filas de datos
       worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1 || rowNumber === totalRowNumber) return; // Omitir cabecera y totalizador por ahora
+        if (rowNumber === 1 || rowNumber === totalRowNumber) return; 
         row.height = 20;
         const esCebra = rowNumber % 2 === 0;
         row.eachCell((cell, colNumber) => {
           cell.font = { name: 'Arial', size: 9 };
-          if (esCebra) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF5FB' } }; // Cebra azulada clara
+          if (esCebra) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF5FB' } }; 
           
-          if ([1, 2, 5].includes(colNumber)) cell.alignment = { vertical: 'middle', horizontal: 'center' };
-          else if ([8, 10, 11].includes(colNumber)) cell.alignment = { vertical: 'middle', horizontal: 'right' };
+          if ([1, 2, 5, 7].includes(colNumber)) cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          else if ([9, 11, 12].includes(colNumber)) cell.alignment = { vertical: 'middle', horizontal: 'right' };
           else cell.alignment = { vertical: 'middle', horizontal: 'left' };
           
-          if (colNumber === 8) cell.numFmt = '#,##0';
-          if (colNumber === 10 || colNumber === 11) cell.numFmt = '"$"#,##0';
+          if (colNumber === 9) cell.numFmt = '#,##0';
+          if (colNumber === 11 || colNumber === 12) cell.numFmt = '"$"#,##0';
         });
       });
 
-      // 🎨 DAR ESTILO A LA FILA DE TOTALES (Fila final)
       totalRow.height = 22;
       totalRow.eachCell((cell, colNumber) => {
-        cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF0A4C68' } }; // Azul oscuro destacado
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD6EEFC' } }; // Fondo celeste de totales
+        cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF0A4C68' } }; 
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD6EEFC' } }; 
         
-        // Bordes de contabilidad estándar (línea delgada superior y doble inferior para el total)
         cell.border = {
           top: { style: 'thin', color: { argb: 'FF117097' } },
           bottom: { style: 'double', color: { argb: 'FF117097' } }
         };
 
-        if (colNumber === 7) {
-          cell.alignment = { vertical: 'middle', horizontal: 'right' }; // Alinear texto "TOTAL GENERAL..."
-        }
-        if (colNumber === 11) {
-          cell.alignment = { vertical: 'middle', horizontal: 'right' }; // Alinear el resultado de la suma
-          cell.numFmt = '"$"#,##0'; // Formato de moneda
+        if (colNumber === 8) cell.alignment = { vertical: 'middle', horizontal: 'right' }; 
+        if (colNumber === 12) {
+          cell.alignment = { vertical: 'middle', horizontal: 'right' }; 
+          cell.numFmt = '"$"#,##0'; 
         }
       });
 
@@ -246,12 +257,13 @@ export default function Gastos({
       fecha_gasto: gastoForm.fecha,
       cantidad: parseFloat(gastoForm.cantidad) || 0,
       unidad_medida: gastoForm.unidad_medida,
-      precio_unitario: parseFloat(gastoForm.precio_unitario) || 0
+      precio_unitario: parseFloat(gastoForm.precio_unitario) || 0,
+      forma_pago: gastoForm.forma_pago || 'Efectivo',
+      numero_cuenta: gastoForm.numero_cuenta || null // 👈 Guarda la cuenta digitada en el egreso
     };
 
     try {
       if (gastoForm.id_editando) {
-        // ACTUALIZACIÓN DE REGISTRO EXISTENTE (UPDATE)
         const { error } = await supabase
           .from('egresos')
           .update(payload)
@@ -260,7 +272,6 @@ export default function Gastos({
         if (error) throw error;
         mostrarAlerta("Gasto actualizado correctamente en bitácora", "exito");
       } else {
-        // CREACIÓN DE REGISTRO NUEVO (INSERT)
         const { error } = await supabase
           .from('egresos')
           .insert([payload]);
@@ -277,10 +288,10 @@ export default function Gastos({
   };
 
   return (
-    <div className="space-y-6 pb-20">
+    <div className="space-y-6 pb-20 text-slate-800">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* COLUMNA IZQUIERDA: FORMULARIO DE REGISTRO REORGANIZADO (Azul Océano) */}
+        {/* COLUMNA IZQUIERDA: FORMULARIO DE REGISTRO REORGANIZADO */}
         <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-[#117097] h-fit">
           <div className="flex justify-between items-center mb-5 border-b pb-3">
             <h3 className="font-black text-slate-800 uppercase text-xs italic">
@@ -334,10 +345,30 @@ export default function Gastos({
             <div>
               <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Proveedor / Beneficiario</label>
               <select className="w-full border-2 p-2.5 rounded-xl bg-white font-bold text-xs outline-none focus:border-[#117097]" 
-                value={gastoForm.proveedor_id} onChange={e => setGastoForm({...gastoForm, proveedor_id: e.target.value})}>
+                value={gastoForm.proveedor_id} onChange={e => handleCambioProveedor(e.target.value)}>
                 <option value="">Particular / Otros</option>
                 {listaProveedores?.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
+            </div>
+
+            {/* FORMA DE PAGO + 🛠️ CUADRO ROJO EVOLUCIONADO: AHORA ES UN INPUT EDITABLE[cite: 7] */}
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Forma de Pago Efectiva y Cuenta</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <select className="w-full border-2 p-2.5 rounded-xl bg-white font-bold text-xs text-[#117097] outline-none focus:border-[#117097]" 
+                  value={gastoForm.forma_pago || 'Efectivo'} onChange={e => setGastoForm({...gastoForm, forma_pago: e.target.value})}>
+                  {formasPago.map(fp => <option key={fp} value={fp}>{fp}</option>)}
+                </select>
+                
+                {/* 📝 TU CUADRO ROJO AHORA ES INPUT TEMPORAL: Te permite sobreescribir la cuenta al vuelo[cite: 7] */}
+                <input 
+                  type="text"
+                  className="w-full border-2 border-dashed border-amber-300 p-2.5 rounded-xl bg-amber-50/40 text-center font-black text-xs text-[#117097] tracking-tight outline-none focus:border-[#117097] focus:border-solid"
+                  value={gastoForm.numero_cuenta || ''} 
+                  onChange={e => setGastoForm({...gastoForm, numero_cuenta: e.target.value})} 
+                  placeholder="N° Cuenta / Celular"
+                />
+              </div>
             </div>
 
             {/* CUADRO TÉCNICO INTERNO CON TOTALIZADOR EN TIEMPO REAL */}
@@ -346,7 +377,7 @@ export default function Gastos({
                 <div>
                   <label className="text-[9px] font-black text-slate-500 uppercase px-1">Cantidad</label>
                   <input type="number" className="w-full p-2 border-2 bg-white rounded-xl outline-none text-xs font-black text-slate-700 focus:border-[#117097]" 
-                    value={gastoForm.cantidad} onChange={e => setGastoForm({...gastoForm, cantidad: e.target.value})} placeholder="0" />
+                    value={gastoForm.canvas || gastoForm.cantidad} onChange={e => setGastoForm({...gastoForm, cantidad: e.target.value})} placeholder="0" />
                 </div>
                 <div>
                   <label className="text-[9px] font-black text-slate-500 uppercase px-1">U. Medida</label>
@@ -371,7 +402,7 @@ export default function Gastos({
 
               {/* MONTO CALCULADO OPERACIÓN */}
               <div className="pt-2 border-t border-slate-200">
-                <label className="text-[9px] font-black text-slate-400 uppercase px-1 italic">Monto Calculado Operación</label>
+                <label className="text-[9px] font-black text-slate-400 uppercase px-1 italic">Monto Evaluado Operación</label>
                 <div className="w-full p-2.5 bg-white border rounded-xl font-black text-sm text-slate-800 tracking-wider text-center shadow-sm">
                   {formatoPesos(gastoForm.monto)}
                 </div>
@@ -417,49 +448,74 @@ export default function Gastos({
                   <th className="p-4 border-b-2 border-gray-400">Fecha / Factura</th>
                   <th className="p-4 border-b-2 border-gray-400">Invernadero</th>
                   <th className="p-4 border-b-2 border-gray-400">Concepto / Categoría</th>
+                  <th className="p-4 border-b-2 border-gray-400 text-center">Forma de Pago</th>
                   <th className="p-4 border-b-2 border-gray-400 text-center">Detalle</th>
                   <th className="p-4 border-b-2 border-gray-400 text-right">Monto</th>
                   <th className="p-4 border-b-2 border-gray-400 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y-2 divide-gray-400">
-                {datosEgresos?.sort((a, b) => b.id - a.id).map((g, index) => (
-                  <tr key={g.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-100'} hover:bg-sky-50 transition-colors border-l-8 border-[#117097]`}>
-                    <td className="p-4">
-                      <div className="font-black text-slate-900">{g.fecha_gasto}</div>
-                      <div className="text-[10px] text-[#117097] font-black mt-0.5">{g.numero_comprobante ? `DOC: ${g.numero_comprobante.toUpperCase()}` : 'S/N'}</div>
-                    </td>
-                    <td className="p-4">
-                      <span className="bg-slate-700 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase shadow-sm">
-                        {g.invernaderos?.nombre || 'Gral'}
-                      </span>
-                    </td>
-                    <td className="p-4 font-bold text-slate-800">
-                      <p className="uppercase">{g.descripcion}</p>
-                      <p className="text-[9px] text-[#117097] font-black uppercase italic mt-0.5">📌 {g.categoria || 'Varios'}</p>
-                    </td>
-                    <td className="p-4 text-center">
-                      <div className="font-black text-slate-800">{g.cantidad} {g.unidad_medida}</div>
-                      <div className="text-[9px] text-slate-400 font-bold">{formatoPesos(g.precio_unitario)} c/u</div>
-                    </td>
-                    <td className="p-4 text-right font-black text-[#117097] text-[12px]">
-                      {formatoPesos(g.monto)}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex gap-1.5 justify-center">
-                        <button onClick={() => prepararEdicion(g)} className="px-2 py-1 bg-slate-700 text-white rounded-lg hover:bg-slate-900 transition-colors flex items-center gap-1 border border-slate-800 shadow-md">
-                          <span className="text-[11px]">✏️</span><span className="text-[9px] font-black tracking-wider">EDITAR</span>
-                        </button>
-                        <button onClick={() => imprimirGastoPDF(g)} className="px-2 py-1 bg-slate-800 text-white rounded-lg hover:bg-black transition-colors flex items-center gap-1 border border-slate-900 shadow-md">
-                          <span className="text-[11px]">🖨️</span><span className="text-[9px] font-black tracking-wider">PDF</span>
-                        </button>
-                        <button onClick={() => eliminarGasto(g.id)} className="p-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-700 hover:text-white transition-colors border border-red-200">
-                          🗑️
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {datosEgresos?.sort((a, b) => b.id - a.id).map((g, index) => {
+                  return (
+                    <tr key={g.id} className={`${index % 2 === 0 ? 'bg-white' : 'bg-gray-100'} hover:bg-sky-50 transition-colors border-l-8 border-[#117097]`}>
+                      <td className="p-4">
+                        <div className="font-black text-slate-900">{g.fecha_gasto}</div>
+                        <div className="text-[10px] text-[#117097] font-black mt-0.5">{g.numero_comprobante ? `DOC: ${g.numero_comprobante.toUpperCase()}` : 'S/N'}</div>
+                      </td>
+                      <td className="p-4">
+                        <span className="bg-slate-700 text-white px-2 py-0.5 rounded text-[9px] font-black uppercase shadow-sm">
+                          {g.invernaderos?.nombre || 'Gral'}
+                        </span>
+                      </td>
+                      <td className="p-4 font-bold text-slate-800">
+                        <p className="uppercase">{g.descripcion}</p>
+                        <p className="text-[9px] text-[#117097] font-black uppercase italic mt-0.5">📌 {g.categoria || 'Varios'}</p>
+                      </td>
+                      <td className="p-4 text-center font-bold">
+                        <span className={`inline-block px-2 py-0.5 rounded text-[8px] uppercase tracking-wider font-black shadow-sm ${
+                          g.forma_pago === 'Efectivo' 
+                            ? 'bg-emerald-100 text-emerald-800' 
+                            : g.forma_pago?.toLowerCase().includes('bre-b') 
+                            ? 'bg-cyan-100 text-cyan-800 border border-cyan-200' 
+                            : g.forma_pago?.toLowerCase().includes('nequi') 
+                            ? 'bg-purple-100 text-purple-800' 
+                            : g.forma_pago?.toLowerCase().includes('daviplata')
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {g.forma_pago?.toLowerCase().includes('bre-b') ? '⚡ Bre-B' : `${g.forma_pago || 'Efectivo'}`}
+                        </span>
+                        
+                        {/* 🔒 HISTORIAL BLINDADO: Lee y pinta directamente la cuenta que quedó asentada en el egreso individual */}
+                        {g.forma_pago !== 'Efectivo' && g.numero_cuenta && (
+                          <p className="text-[9px] text-slate-500 font-black tracking-tight mt-1 bg-slate-50 border border-slate-200 rounded px-1 py-0.5 max-w-[110px] mx-auto truncate" title={g.numero_cuenta}>
+                            #{g.numero_cuenta}
+                          </p>
+                        )}
+                      </td>
+                      <td className="p-4 text-center">
+                        <div className="font-black text-slate-800">{g.cantidad} {g.unidad_medida}</div>
+                        <div className="text-[9px] text-slate-400 font-bold">{formatoPesos(g.precio_unitario)} c/u</div>
+                      </td>
+                      <td className="p-4 text-right font-black text-[#117097] text-[12px]">
+                        {formatoPesos(g.monto)}
+                      </td>
+                      <td className="p-4">
+                        <div className="flex gap-1.5 justify-center">
+                          <button onClick={() => prepararEdicion(g)} className="px-2 py-1 bg-slate-700 text-white rounded-lg hover:bg-slate-900 transition-colors flex items-center gap-1 border border-slate-800 shadow-md">
+                            <span className="text-[11px]">✏️</span><span className="text-[9px] font-black tracking-wider">EDITAR</span>
+                          </button>
+                          <button onClick={() => imprimirGastoPDF(g)} className="px-2 py-1 bg-slate-800 text-white rounded-lg hover:bg-black transition-colors flex items-center gap-1 border border-slate-900 shadow-md">
+                            <span className="text-[11px]">🖨️</span><span className="text-[9px] font-black tracking-wider">PDF</span>
+                          </button>
+                          <button onClick={() => eliminarGasto(g.id)} className="p-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-700 hover:text-white transition-colors border border-red-200">
+                            🗑️
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
