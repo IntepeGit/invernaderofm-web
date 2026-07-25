@@ -54,7 +54,7 @@ export default function Despachos({
     }
   }, [datosDespachos, despachoForm.id_editando]);
 
-  // EXPORTACIÓN DE DESPACHOS A EXCEL EN 2 HOJAS
+  // EXPORTACIÓN DE DESPACHOS A EXCEL (TOTALES CALCULADOS POR REMISIÓN Y FECHA)
   const exportarDespachosAExcel = async () => {
     if (!datosDespachos || datosDespachos.length === 0) {
       if (mostrarAlerta) mostrarAlerta("No hay registros de despachos para exportar", "error");
@@ -67,8 +67,8 @@ export default function Despachos({
       // HOJA 1: RESUMEN GENERAL
       const wsResumen = workbook.addWorksheet('Resumen de Remisiones');
       wsResumen.columns = [
-        { header: 'FECHA DESPACHO', key: 'fecha', width: 16 },
         { header: 'REMISIÓN N°', key: 'remision', width: 15 },
+        { header: 'FECHA DESPACHO', key: 'fecha', width: 16 },
         { header: 'INVERNADERO ORIGEN', key: 'inv', width: 22 },
         { header: 'CLIENTE / DESTINO', key: 'cliente', width: 30 },
         { header: 'VALOR TOTAL CARGA', key: 'total', width: 22 }
@@ -76,6 +76,7 @@ export default function Despachos({
 
       datosDespachos.forEach(d => {
         const numRem = d.numero_remision || 'S/N';
+        const fechaDespacho = d.fecha_venta ? String(d.fecha_venta).split('T')[0] : 'S/F';
         const productosImpresos = new Set();
         let sumatoriaProductosReal = 0;
 
@@ -92,8 +93,8 @@ export default function Despachos({
         const valorFinalCarga = sumatoriaProductosReal > 0 ? sumatoriaProductosReal : parseFloat(d.total_venta || 0);
 
         wsResumen.addRow({
-          fecha: d.fecha_venta ? String(d.fecha_venta).split('T')[0] : 'S/F',
-          remision: d.numero_remision || 'S/N',
+          remision: numRem,
+          fecha: fechaDespacho,
           inv: (d.invernaderos?.nombre || 'General').toUpperCase(),
           cliente: (d.clientes?.nombre_completo || 'Particular').toUpperCase(),
           total: valorFinalCarga
@@ -101,8 +102,8 @@ export default function Despachos({
       });
 
       const ultimaFilaResumen = wsResumen.rowCount;
-      const filaTotalResumen = wsResumen.addRow({
-        fecha: '', remision: '', inv: '',
+      wsResumen.addRow({
+        remision: '', fecha: '', inv: '',
         cliente: 'TOTAL GENERAL DESPACHOS:',
         total: { formula: `SUM(E2:E${ultimaFilaResumen})` }
       });
@@ -145,20 +146,30 @@ export default function Despachos({
       });
       wsResumen.autoFilter = { from: { row: 1, column: 1 }, to: { row: ultimaFilaResumen, column: 5 } };
 
-      // HOJA 2: DESGLOSE DE PRODUCTOS
+      // HOJA 2: DESGLOSE DE PRODUCTOS (Agrupación precisa por Remisión + Fecha)
       const wsDetalle = workbook.addWorksheet('Desglose de Productos');
       wsDetalle.columns = [
         { header: 'REMISIÓN N°', key: 'remision', width: 15 },
-        { header: 'PRODUCTO / VARIEDAD', key: 'prod', width: 28 },
-        { header: 'CANTIDAD', key: 'cant', width: 14 },
-        { header: 'ESCALA', key: 'escala', width: 14 },
+        { header: 'FECHA DESPACHO', key: 'fecha', width: 15 },
+        { header: 'INVERNADERO ORIGEN', key: 'inv', width: 20 },
+        { header: 'CLIENTE / DESTINO', key: 'cliente', width: 28 },
+        { header: 'PRODUCTO / VARIEDAD', key: 'prod', width: 25 },
+        { header: 'CANTIDAD', key: 'cant', width: 12 },
+        { header: 'ESCALA', key: 'escala', width: 12 },
         { header: 'PRECIO UNITARIO', key: 'precio', width: 18 },
-        { header: 'SUBTOTAL ITEM', key: 'subtotal', width: 20 }
+        { header: 'SUBTOTAL ITEM', key: 'subtotal', width: 18 },
+        { header: 'TOTAL x Remision', key: 'totalRemisionCol', width: 22 }
       ];
 
+      // ⚡ CLAVE ÚNICA: Remisión + Fecha para evitar cruces cuando se repiten números de remisión
+      const totalesPorRemisionFecha = {};
       datosDespachos.forEach(d => {
         const numRem = d.numero_remision || 'S/N';
+        const fechaDespacho = d.fecha_venta ? String(d.fecha_venta).split('T')[0] : 'S/F';
+        const llaveUnicaRemision = `${numRem}_${fechaDespacho}`;
+
         const productosImpresos = new Set();
+        let sumatoria = 0;
 
         (d.detalle_ventas || []).forEach(item => {
           const claveUnica = `${numRem}-${String(item.descripcion).trim().toUpperCase()}`;
@@ -167,22 +178,66 @@ export default function Despachos({
 
           const c = parseFloat(item.cantidad || 0);
           const p = parseFloat(item.precio_unitario || item.precio || 0);
-          wsDetalle.addRow({
-            remision: numRem,
-            prod: String(item.descripcion || '').toUpperCase(),
-            cant: c,
-            escala: String(item.escala || 'Kilo').toUpperCase(),
-            precio: p,
-            subtotal: c * p
+          sumatoria += (c * p);
+        });
+
+        totalesPorRemisionFecha[llaveUnicaRemision] = sumatoria > 0 ? sumatoria : parseFloat(d.total_venta || 0);
+      });
+
+      const filasFinalesRemision = [];
+      let filaActualTracker = 2;
+
+      datosDespachos.forEach(d => {
+        const numRem = d.numero_remision || 'S/N';
+        const fechaDespacho = d.fecha_venta ? String(d.fecha_venta).split('T')[0] : 'S/F';
+        const llaveUnicaRemision = `${numRem}_${fechaDespacho}`;
+        const invernaderoNom = (d.invernaderos?.nombre || 'General').toUpperCase();
+        const clienteNom = (d.clientes?.nombre_completo || 'Particular').toUpperCase();
+        const totalRemisionValor = totalesPorRemisionFecha[llaveUnicaRemision] || 0;
+
+        const productosImpresos = new Set();
+        let itemsDeEstaRemision = [];
+
+        (d.detalle_ventas || []).forEach(item => {
+          const claveUnica = `${numRem}-${String(item.descripcion).trim().toUpperCase()}`;
+          if (productosImpresos.has(claveUnica)) return;
+          productosImpresos.add(claveUnica);
+
+          const c = parseFloat(item.cantidad || 0);
+          const p = parseFloat(item.precio_unitario || item.precio || 0);
+
+          itemsDeEstaRemision.push({
+            c, p, desc: String(item.descripcion || '').toUpperCase(), escala: String(item.escala || 'Kilo').toUpperCase()
           });
         });
+
+        itemsDeEstaRemision.forEach((it, idxItem) => {
+          const esUltimoItem = idxItem === itemsDeEstaRemision.length - 1;
+
+          wsDetalle.addRow({
+            remision: numRem,
+            fecha: fechaDespacho,
+            inv: invernaderoNom,
+            cliente: clienteNom,
+            prod: it.desc,
+            cant: it.c,
+            escala: it.escala,
+            precio: it.p,
+            subtotal: it.c * it.p,
+            totalRemisionCol: esUltimoItem ? totalRemisionValor : ''
+          });
+        });
+
+        filaActualTracker += itemsDeEstaRemision.length;
+        filasFinalesRemision.push(filaActualTracker - 1);
       });
 
       const ultimaFilaDetalle = wsDetalle.rowCount;
-      const filaTotalDetalle = wsDetalle.addRow({
-        remision: '', prod: '', cant: '', escala: '',
+      wsDetalle.addRow({
+        remision: '', fecha: '', inv: '', cliente: '', prod: '', cant: '', escala: '',
         precio: 'TOTAL CARGAS:',
-        subtotal: { formula: `SUM(F2:F${ultimaFilaDetalle})` }
+        subtotal: { formula: `SUM(I2:I${ultimaFilaDetalle})` },
+        totalRemisionCol: ''
       });
 
       wsDetalle.getRow(1).height = 24;
@@ -212,17 +267,30 @@ export default function Despachos({
           cell.font = { name: 'Arial', size: 9 };
           if (esCebra) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
           
-          if (colNum === 5 || colNum === 6) {
+          if (colNum === 8 || colNum === 9 || colNum === 10) {
             cell.numFmt = '"$"#,##0';
             cell.alignment = { horizontal: 'right', vertical: 'middle' };
-          } else if (colNum === 1 || colNum === 3 || colNum === 4) {
+          } else if (colNum === 1 || colNum === 2 || colNum === 6 || colNum === 7) {
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
           } else {
             cell.alignment = { horizontal: 'left', vertical: 'middle' };
           }
         });
+
+        if (filasFinalesRemision.includes(idx)) {
+          for (let c = 1; c <= 10; c++) {
+            const cellActual = row.getCell(c);
+            cellActual.border = {
+              ...(cellActual.border || {}),
+              bottom: { style: 'double', color: { argb: 'FF000000' } }
+            };
+          }
+          const cellTotalRemision = row.getCell(10);
+          cellTotalRemision.font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FF15803D' } };
+        }
       });
-      wsDetalle.autoFilter = { from: { row: 1, column: 1 }, to: { row: ultimaFilaDetalle, column: 6 } };
+
+      wsDetalle.autoFilter = { from: { row: 1, column: 1 }, to: { row: ultimaFilaDetalle, column: 10 } };
 
       const buffer = await workbook.xlsx.writeBuffer();
       const fechaHoy = new Date().toISOString().split('T')[0];
@@ -243,7 +311,6 @@ export default function Despachos({
       .trim();
   };
 
-  // IMPRESIÓN DE REMISIONES EN PDF
   const ejecutarImpresionDespachoLocal = (d) => {
     try {
       if (!d) return;
@@ -326,7 +393,6 @@ export default function Despachos({
     setDespachoForm({ ...despachoForm, filas: nuevasFilas });
   };
 
-  // FILTRADO CON BARRA DE BÚSQUEDA INTEGRA EN PANTALLA
   const despachosFiltrados = (datosDespachos || [])
     .filter(d => {
       const q = busqueda.toLowerCase();
@@ -341,86 +407,88 @@ export default function Despachos({
     <div className="space-y-6 pb-20 text-slate-800">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* COLUMNA IZQUIERDA: FORMULARIO DE DESPACHO */}
-        <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-green-700 h-fit">
-          <div className="flex justify-between items-center mb-5 border-b pb-3">
+        {/* COLUMNA IZQUIERDA: FORMULARIO DE DESPACHO (COMPACTADO VERTICALMENTE) */}
+        <div className="bg-white p-4 sm:p-5 rounded-3xl shadow-xl border-t-8 border-green-700 h-fit">
+          <div className="flex justify-between items-center mb-3 border-b pb-2">
             <h3 className="font-black text-slate-800 uppercase text-xs italic">
               {despachoForm.id_editando ? '📝 Editar Remisión' : '🚚 Nueva Remisión'}
             </h3>
-            <div className="text-right bg-green-50 px-3 py-1.5 rounded-xl border border-green-100">
-              <p className="text-[9px] font-black text-green-600 uppercase italic leading-none">Total Carga</p>
-              <p className="text-sm font-black text-green-700 mt-0.5">{formatoPesos(totalFormulario)}</p>
+            <div className="text-right bg-green-50 px-2.5 py-1 rounded-xl border border-green-100">
+              <p className="text-[8px] font-black text-green-600 uppercase italic leading-none">Total Carga</p>
+              <p className="text-xs font-black text-green-700 mt-0.5">{formatoPesos(totalFormulario)}</p>
             </div>
           </div>
           
-          <form onSubmit={guardarDespachoCompleto} className="space-y-4">
-            <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Número de Remisión</label>
-              <input
-                type="text"
-                placeholder="N° Remisión"
-                className={`w-full p-2.5 border-2 rounded-xl font-black text-sm outline-none transition-all ${
-                  despachoForm.errorDuplicado 
-                    ? 'border-red-400 bg-red-50 text-red-600 focus:border-red-500' 
-                    : 'border-blue-100 bg-blue-50/50 text-blue-600 focus:border-blue-500'
-                }`}
-                value={despachoForm.numero_remision || ''}
-                onChange={(e) => setDespachoForm({...despachoForm, numero_remision: e.target.value})}
-              />
-              {despachoForm.errorDuplicado && (
-                <span className="text-[9px] font-black text-red-600 block mt-1 ml-1 animate-pulse">
-                  ⚠️ ESTE NÚMERO YA EXISTE
-                </span>
-              )}
+          <form onSubmit={guardarDespachoCompleto} className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[9px] font-bold text-gray-400 uppercase px-1 italic">N° Remisión</label>
+                <input
+                  type="text"
+                  placeholder="N° Remisión"
+                  className={`w-full p-1.5 border-2 rounded-xl font-black text-xs outline-none transition-all ${
+                    despachoForm.errorDuplicado 
+                      ? 'border-red-400 bg-red-50 text-red-600 focus:border-red-500' 
+                      : 'border-blue-100 bg-blue-50/50 text-blue-600 focus:border-blue-500'
+                  }`}
+                  value={despachoForm.numero_remision || ''}
+                  onChange={(e) => setDespachoForm({...despachoForm, numero_remision: e.target.value})}
+                />
+                {despachoForm.errorDuplicado && (
+                  <span className="text-[8px] font-black text-red-600 block mt-0.5 ml-1 animate-pulse">
+                    ⚠️ YA EXISTE
+                  </span>
+                )}
+              </div>
+              <div>
+                <label className="text-[9px] font-bold text-gray-400 uppercase px-1 italic">Fecha Despacho</label>
+                <input 
+                  type="date" 
+                  className="w-full border-2 p-1.5 rounded-xl font-bold text-xs bg-white outline-none focus:border-green-700" 
+                  value={despachoForm.fecha_venta || ''} 
+                  onChange={e => setDespachoForm({...despachoForm, fecha_venta: e.target.value})} 
+                  required 
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Fecha Despacho</label>
-              <input 
-                type="date" 
-                className="w-full border-2 p-2.5 rounded-xl font-bold text-sm bg-white outline-none focus:border-green-700" 
-                value={despachoForm.fecha_venta || ''} 
-                onChange={e => setDespachoForm({...despachoForm, fecha_venta: e.target.value})} 
-                required 
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label className="text-[9px] font-bold text-gray-400 uppercase px-1 italic">Invernadero (Origen)</label>
+                <select 
+                  className="w-full border-2 p-1.5 rounded-xl font-bold text-xs bg-white outline-none focus:border-green-700"
+                  value={despachoForm.invernadero_id || ''}
+                  onChange={e => setDespachoForm({...despachoForm, invernadero_id: e.target.value})}
+                  required
+                >
+                  <option value="">Seleccione bloque...</option>
+                  {listaInvernaderos?.filter(i => i.activo !== false).map(inv => <option key={inv.id} value={inv.id}>{inv.nombre?.toUpperCase()}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[9px] font-bold text-gray-400 uppercase px-1 italic">Cliente (Destino)</label>
+                <select 
+                  className="w-full border-2 p-1.5 rounded-xl font-bold text-xs bg-white outline-none focus:border-green-700"
+                  value={despachoForm.cliente_id || ''}
+                  onChange={e => setDespachoForm({...despachoForm, cliente_id: e.target.value})}
+                  required
+                >
+                  <option value="">Seleccione cliente...</option>
+                  {listaClientes?.filter(cli => cli.activo !== false).map(cli => <option key={cli.id} value={cli.id}>{cli.nombre_completo?.toUpperCase()}</option>)}
+                </select>
+              </div>
             </div>
 
-            <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Invernadero (Origen)</label>
-              <select 
-                className="w-full border-2 p-2.5 rounded-xl font-bold text-xs bg-white outline-none focus:border-green-700"
-                value={despachoForm.invernadero_id || ''}
-                onChange={e => setDespachoForm({...despachoForm, invernadero_id: e.target.value})}
-                required
-              >
-                <option value="">Seleccione bloque...</option>
-                {listaInvernaderos?.filter(i => i.activo !== false).map(inv => <option key={inv.id} value={inv.id}>{inv.nombre?.toUpperCase()}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[10px] font-bold text-gray-400 uppercase px-1 italic">Cliente (Destino)</label>
-              <select 
-                className="w-full border-2 p-2.5 rounded-xl font-bold text-xs bg-white outline-none focus:border-green-700"
-                value={despachoForm.cliente_id || ''}
-                onChange={e => setDespachoForm({...despachoForm, cliente_id: e.target.value})}
-                required
-              >
-                <option value="">Seleccione cliente...</option>
-                {listaClientes?.filter(cli => cli.activo !== false).map(cli => <option key={cli.id} value={cli.id}>{cli.nombre_completo?.toUpperCase()}</option>)}
-              </select>
-            </div>
-
-            <div className="pt-2 space-y-3 border-t">
-              <p className="text-[10px] font-black text-slate-700 uppercase tracking-wider italic">📦 Desglose de Productos</p>
+            <div className="pt-1 space-y-2 border-t">
+              <p className="text-[9px] font-black text-slate-700 uppercase tracking-wider italic">📦 Desglose de Productos</p>
               
               {despachoForm.filas?.map((fila, index) => (
-                <div key={index} className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2 relative">
+                <div key={index} className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 space-y-1.5 relative">
                   {despachoForm.filas.length > 1 && (
                     <button 
                       type="button" 
                       onClick={() => eliminarFilaFormulario(index)}
-                      className="absolute top-2 right-3 text-red-400 hover:text-red-600 font-black text-xs"
+                      className="absolute top-1.5 right-2 text-red-400 hover:text-red-600 font-black text-xs"
                       title="Eliminar fila"
                     >
                       ✕
@@ -431,7 +499,7 @@ export default function Despachos({
                     <label className="text-[8px] font-black text-slate-400 uppercase">Producto / Variedad</label>
                     <input 
                       placeholder="Ej: Tomate Larga Vida" 
-                      className="w-full p-2 border bg-white rounded-xl font-bold text-xs uppercase outline-none focus:border-green-500" 
+                      className="w-full p-1.5 border bg-white rounded-lg font-bold text-xs uppercase outline-none focus:border-green-500" 
                       value={fila.producto || ''} 
                       onChange={e => actualizarFilaDespacho(index, 'producto', e.target.value)} 
                       required 
@@ -445,7 +513,7 @@ export default function Despachos({
                         type="number" 
                         step="any"
                         placeholder="0" 
-                        className="w-full p-2 border bg-white rounded-xl font-black text-xs text-center outline-none focus:border-green-500" 
+                        className="w-full p-1.5 border bg-white rounded-lg font-black text-xs text-center outline-none focus:border-green-500" 
                         value={fila.cantidad || ''} 
                         onChange={e => actualizarFilaDespacho(index, 'cantidad', e.target.value)} 
                         required 
@@ -454,7 +522,7 @@ export default function Despachos({
                     <div>
                       <label className="text-[8px] font-black text-slate-400 uppercase">Escala</label>
                       <select 
-                        className="w-full p-2 border bg-white rounded-xl font-bold text-xs outline-none focus:border-green-500" 
+                        className="w-full p-1.5 border bg-white rounded-lg font-bold text-xs outline-none focus:border-green-500" 
                         value={fila.escala || ''} 
                         onChange={e => actualizarFilaDespacho(index, 'escala', e.target.value)} 
                         required
@@ -465,13 +533,13 @@ export default function Despachos({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 items-center pt-1">
+                  <div className="grid grid-cols-2 gap-2 items-center pt-0.5">
                     <div>
                       <label className="text-[8px] font-black text-slate-400 uppercase">Precio Unit.</label>
                       <input 
                         type="text" 
                         placeholder="$ 0" 
-                        className="w-full p-1.5 border bg-white rounded-xl font-black text-green-700 text-xs text-center outline-none focus:border-green-500" 
+                        className="w-full p-1 border bg-white rounded-lg font-black text-green-700 text-xs text-center outline-none focus:border-green-500" 
                         value={formatoPesos(fila.precio)} 
                         onChange={e => actualizarFilaDespacho(index, 'precio', e.target.value.replace(/\D/g, ""))} 
                         required 
@@ -479,7 +547,7 @@ export default function Despachos({
                     </div>
                     <div className="text-right pr-1">
                       <p className="text-[8px] font-black text-slate-400 uppercase">Subtotal</p>
-                      <p className="font-black text-slate-800 text-xs mt-1">
+                      <p className="font-black text-slate-800 text-xs mt-0.5">
                         {formatoPesos(parseFloat(fila.cantidad || 0) * parseFloat(fila.precio || 0))}
                       </p>
                     </div>
@@ -490,7 +558,7 @@ export default function Despachos({
               <button 
                 type="button" 
                 onClick={agregarFila}
-                className="w-full bg-blue-50 text-blue-600 text-[10px] font-black py-2 rounded-xl border border-dashed border-blue-300 hover:bg-blue-100 transition-colors uppercase tracking-widest"
+                className="w-full bg-blue-50 text-blue-600 text-[9px] font-black py-1.5 rounded-xl border border-dashed border-blue-300 hover:bg-blue-100 transition-colors uppercase tracking-widest"
               >
                 + Añadir Producto
               </button>
@@ -498,14 +566,14 @@ export default function Despachos({
 
             <button 
               type="submit" 
-              className="w-full bg-green-700 text-white font-black py-3.5 rounded-xl shadow-md uppercase tracking-wider text-xs hover:bg-green-800 transition-all cursor-pointer"
+              className="w-full bg-green-700 text-white font-black py-3 rounded-xl shadow-md uppercase tracking-wider text-xs hover:bg-green-800 transition-all cursor-pointer"
             >
               {despachoForm.id_editando ? '💾 Actualizar Remisión' : '🚀 Guardar Remisión'}
             </button>
           </form>
         </div>
 
-        {/* COLUMNA DERECHA: TABLA HISTÓRICA CON BÚSQUEDA E IMPRESIÓN */}
+        {/* COLUMNA DERECHA: TABLA HISTÓRICA */}
         <div className="lg:col-span-2 bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-200">
           
           <div className="p-4 bg-slate-800 text-white font-black text-xs uppercase tracking-widest italic flex flex-col sm:flex-row justify-between items-center gap-2">
@@ -529,7 +597,7 @@ export default function Despachos({
             </div>
           </div>
           
-          <div className="overflow-x-auto min-h-[400px]">
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full text-left text-[11px] border-collapse">
               <thead>
                 <tr className="bg-gray-200 text-slate-800 uppercase font-black sticky top-0">
@@ -577,7 +645,7 @@ export default function Despachos({
                         <div className="flex gap-1.5 justify-center">
                           <button 
                             onClick={() => ejecutarImpresionDespachoLocal(d)} 
-                            className="px-2 py-1 bg-slate-800 text-white rounded-lg hover:bg-black transition-colors flex items-center gap-1 border border-slate-900 shadow"
+                            className="px-2 py-1 bg-slate-800 text-white rounded-lg hover:bg-black transition-colors flex items-center gap-1 border border-slate-900 shadow cursor-pointer"
                             title="Imprimir PDF"
                           >
                             <span className="text-[10px]">🖨️</span><span className="text-[9px] font-black tracking-wider">PDF</span>
@@ -586,7 +654,7 @@ export default function Despachos({
                           {userRole === 'admin' && (
                             <button 
                               onClick={() => eliminarDespacho(d.id)}
-                              className="p-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-600 hover:text-white transition-all border border-red-200 text-xs"
+                              className="p-1 bg-red-100 text-red-700 rounded-lg hover:bg-red-600 hover:text-white transition-all border border-red-200 text-xs cursor-pointer"
                               title="Eliminar Remisión"
                             >
                               🗑️

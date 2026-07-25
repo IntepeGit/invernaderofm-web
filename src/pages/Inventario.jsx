@@ -15,17 +15,17 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
   const [cargando, setCargando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
 
-  // Edición directa
+  // Edición directa extendida
   const [idEditando, setIdEditando] = useState(null);
   const [filaEditable, setFilaEditable] = useState({ 
     nombre_insumo: '', categoria: '', unidad_medida: '', cantidad_actual: 0, 
     stock_minimo: 0, aplica_stock: true, tipo_item: 'Consumible', ubicacion: 'BODEGA PRINCIPAL', estado_herramienta: 'Operativo'
   });
 
-  // Formularios
+  // Formulario creación de artículo
   const [insumoForm, setInsumoForm] = useState({ 
     nombre_insumo: '', tipo_item: 'Consumible', categoria: 'Fertilizante', 
-    unidad_medida: 'Bulto', stock_minimo: 5, aplica_stock: true, ubicacion: 'BODEGA PRINCIPAL', estado_herramienta: 'Operativo'
+    unidad_medida: 'Bulto', cantidad_inicial: 1, stock_minimo: 3, aplica_stock: true, ubicacion: 'BODEGA PRINCIPAL', estado_herramienta: 'Operativo'
   });
   
   const [entradaForm, setEntradaForm] = useState({ 
@@ -40,8 +40,8 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
     herramienta_id: '', nueva_ubicacion: '', responsable: '', observaciones: ''
   });
 
-  const categorias = ['Fertilizante', 'Veneno', 'Semilla', 'Herramienta', 'Maquinaria', 'Canastilla', 'Plastico', 'Accesorio', 'Manguera', 'Otros'];
-  const unidades = ['Bulto', 'Kilo', 'Litro', 'Metro', 'Unidad', 'Caja', 'Galón'];
+  const categorias = ['Fertilizante', 'Fungicida', 'Semilla', 'Herramienta', 'Maquinaria', 'Canastilla', 'Plastico', 'Accesorio', 'Manguera', 'Otros'];
+  const unidades = ['Bulto', 'Kilo', 'Litro', 'Metro', 'Unidad', 'Caja','Libra','Gramos', 'Galón'];
   const estadosHerramientaOptions = ['Operativo', 'En Mantenimiento', 'En Préstamo', 'Dañado / Inactivo'];
 
   const esAdmin = userRole === 'admin';
@@ -97,13 +97,15 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
 
     try {
       const esConsumible = insumoForm.tipo_item === 'Consumible';
+      const cantIngresada = parseFloat(insumoForm.cantidad_inicial) >= 0 ? parseFloat(insumoForm.cantidad_inicial) : (esConsumible ? 0 : 1);
+
       const { error } = await supabase.from('inventario').insert([{
         nombre_insumo: insumoForm.nombre_insumo.toUpperCase().trim(),
         tipo_item: insumoForm.tipo_item,
         categoria: insumoForm.categoria,
         unidad_medida: insumoForm.unidad_medida,
         stock_minimo: esConsumible && insumoForm.aplica_stock ? (parseFloat(insumoForm.stock_minimo) || 0) : 0,
-        cantidad_actual: esConsumible ? 0 : 1,
+        cantidad_actual: cantIngresada,
         aplica_stock: esConsumible ? insumoForm.aplica_stock : false,
         ubicacion: insumoForm.ubicacion.toUpperCase().trim(),
         estado_herramienta: insumoForm.estado_herramienta
@@ -111,7 +113,7 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
 
       if (error) throw error;
       mostrarAlerta("Artículo registrado en bodega", "exito");
-      setInsumoForm({ nombre_insumo: '', tipo_item: 'Consumible', categoria: 'Fertilizante', unidad_medida: 'Bulto', stock_minimo: 5, aplica_stock: true, ubicacion: 'BODEGA PRINCIPAL', estado_herramienta: 'Operativo' });
+      setInsumoForm({ nombre_insumo: '', tipo_item: 'Consumible', categoria: 'Fertilizante', unidad_medida: 'Bulto', cantidad_inicial: 1, stock_minimo: 3, aplica_stock: true, ubicacion: 'BODEGA PRINCIPAL', estado_herramienta: 'Operativo' });
       cargarInventario();
     } catch (err) { mostrarAlerta("El registro ya existe o hubo un error", "error"); }
   };
@@ -185,11 +187,11 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
     if (!esAdmin) return;
     setIdEditando(ins.id);
     setFilaEditable({
-      nombre_insumo: ins.nombre_insumo,
-      categoria: ins.categoria,
-      unidad_medida: ins.unidad_medida,
-      cantidad_actual: ins.cantidad_actual,
-      stock_minimo: ins.stock_minimo,
+      nombre_insumo: ins.nombre_insumo || '',
+      categoria: ins.categoria || 'Fertilizante',
+      unidad_medida: ins.unidad_medida || 'Unidad',
+      cantidad_actual: ins.cantidad_actual ?? 0,
+      stock_minimo: ins.stock_minimo ?? 0,
       aplica_stock: ins.aplica_stock !== false,
       tipo_item: ins.tipo_item || 'Consumible',
       ubicacion: ins.ubicacion || 'BODEGA PRINCIPAL',
@@ -231,19 +233,22 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
     }
   };
 
+  // ⚡ NUEVO CÁLCULO DE NIVELES DE STOCK (CRÍTICO ≤ 1 Y ALERTA 2-3)
   const obtenerEstadoStock = (ins) => {
     if (ins.tipo_item !== 'Consumible' || ins.aplica_stock === false) {
-      return { nivel: 'herramienta', etiqueta: ins.estado_herramienta || 'Activo', claseTabla: 'bg-slate-100 text-slate-800 border border-slate-300', claseTexto: 'text-slate-800' };
+      return { nivel: 'herramienta', etiqueta: ins.estado_herramienta || 'Activo', claseTabla: 'bg-slate-100 text-slate-800 border border-slate-300', claseTexto: 'text-[#117097]' };
     }
-    if (ins.cantidad_actual <= 2) {
-      return { nivel: 'rojo', etiqueta: 'Crítico (≤2)', claseTabla: 'bg-red-500 text-white animate-pulse', claseTexto: 'text-red-600 font-black' };
-    } else if (ins.cantidad_actual >= 3 && ins.cantidad_actual <= 5) {
-      return { nivel: 'amarillo', etiqueta: 'Bajo (3-5)', claseTabla: 'bg-amber-400 text-slate-900', claseTexto: 'text-amber-600 font-black' };
+
+    const cant = parseFloat(ins.cantidad_actual) || 0;
+
+    if (cant <= 1) {
+      return { nivel: 'rojo', etiqueta: 'CRÍTICO (≤1)', claseTabla: 'bg-red-500 text-white animate-pulse', claseTexto: 'text-red-600 font-black' };
+    } else if (cant >= 2 && cant <= 3) {
+      return { nivel: 'amarillo', etiqueta: 'ALERTA (2-3)', claseTabla: 'bg-amber-400 text-slate-900', claseTexto: 'text-amber-600 font-black' };
     }
-    return { nivel: 'verde', etiqueta: 'Disponible', claseTabla: 'bg-emerald-100 text-emerald-800', claseTexto: 'text-emerald-700' };
+    return { nivel: 'verde', etiqueta: 'DISPONIBLE', claseTabla: 'bg-emerald-100 text-emerald-800', claseTexto: 'text-emerald-700' };
   };
 
-  // --- 📊 EXPORTAR INVENTARIO A EXCEL EN 2 HOJAS (CONSUMIBLES Y HERRAMIENTAS) ---
   const exportarInventarioAExcel = async () => {
     if (!listaInventario || listaInventario.length === 0) {
       mostrarAlerta("No hay artículos en bodega para exportar", "error");
@@ -289,7 +294,6 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
         cantidad: { formula: `=SUM(D2:D${ultFilaC})` }
       });
 
-      // Estilizar Hoja 1
       const headC = sheetConsumibles.getRow(1);
       headC.height = 24;
       headC.eachCell(cell => {
@@ -348,11 +352,10 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
         cantidad: { formula: `=SUM(D2:D${ultFilaH})` }
       });
 
-      // Estilizar Hoja 2
       const headH = sheetHerramientas.getRow(1);
       headH.height = 24;
       headH.eachCell(cell => {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6B21A8' } }; // Color Morado Corporativo
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6B21A8' } };
         cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
       });
@@ -391,7 +394,8 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
     }
   };
 
-  const insumosCriticos = listaInventario.filter(i => i.tipo_item === 'Consumible' && i.aplica_stock !== false && i.cantidad_actual <= 5);
+  // 🚨 FILTRADO DE INSUMOS CON MENOS O IGUAL A 3 UNIDADES
+  const insumosCriticos = listaInventario.filter(i => i.tipo_item === 'Consumible' && i.aplica_stock !== false && parseFloat(i.cantidad_actual) <= 3);
 
   const insumosFiltrados = listaInventario.filter(i => {
     const coincideTexto = i.nombre_insumo.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -405,7 +409,7 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
   return (
     <div className="space-y-6 pb-20 text-slate-800">
       
-      {/* BANNER DE ALERTAS (SÓLO CONSUMIBLES) */}
+      {/* BANNER DE ALERTAS REVISADO */}
       {insumosCriticos.length > 0 && (
         <div className="bg-amber-50 border-l-8 border-amber-500 p-4 rounded-2xl shadow-md">
           <h4 className="font-black text-slate-800 text-xs uppercase tracking-wider mb-2">⚠️ Alertas de Agotamiento de Insumos</h4>
@@ -424,10 +428,10 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
 
       {/* MENÚ DE SECCIONES */}
       <div className="flex gap-2 border-b pb-2 overflow-x-auto">
-        <button onClick={() => setTabActiva('bodega')} className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider whitespace-nowrap transition-all ${tabActiva === 'bodega' ? 'bg-[#117097] text-white shadow' : 'bg-gray-200 text-gray-600'}`}>📦 Existencias / Ubicaciones</button>
-        <button onClick={() => setTabActiva('entrada')} className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider whitespace-nowrap transition-all ${tabActiva === 'entrada' ? 'bg-[#117097] text-white shadow' : 'bg-gray-200 text-gray-600'}`}>📥 Compras / Entradas Insumos</button>
-        <button onClick={() => setTabActiva('salida')} className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider whitespace-nowrap transition-all ${tabActiva === 'salida' ? 'bg-[#117097] text-white shadow' : 'bg-gray-200 text-gray-600'}`}>🧪 Consumo / Aplicación Dosis</button>
-        <button onClick={() => setTabActiva('reubicar')} className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider whitespace-nowrap transition-all ${tabActiva === 'reubicar' ? 'bg-[#117097] text-white shadow' : 'bg-gray-200 text-gray-600'}`}>🔄 Mover / Asignar Herramientas</button>
+        <button onClick={() => setTabActiva('bodega')} className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer ${tabActiva === 'bodega' ? 'bg-[#117097] text-white shadow' : 'bg-gray-200 text-gray-600'}`}>📦 Existencias / Ubicaciones</button>
+        <button onClick={() => setTabActiva('entrada')} className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer ${tabActiva === 'entrada' ? 'bg-[#117097] text-white shadow' : 'bg-gray-200 text-gray-600'}`}>📥 Compras / Entradas Insumos</button>
+        <button onClick={() => setTabActiva('salida')} className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer ${tabActiva === 'salida' ? 'bg-[#117097] text-white shadow' : 'bg-gray-200 text-gray-600'}`}>🧪 Consumo / Aplicación Dosis</button>
+        <button onClick={() => setTabActiva('reubicar')} className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer ${tabActiva === 'reubicar' ? 'bg-[#117097] text-white shadow' : 'bg-gray-200 text-gray-600'}`}>🔄 Mover / Asignar Herramientas</button>
       </div>
 
       {tabActiva === 'bodega' && (
@@ -435,14 +439,13 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
           
           {esAdmin && (
             <div className="space-y-4">
-              {/* REGISTRO DE NUEVO ARTÍCULO */}
               <div className="bg-white p-5 rounded-3xl shadow-xl border border-gray-200 space-y-3">
                 <h3 className="font-black text-slate-800 uppercase text-xs italic">➕ Registrar Insumo o Herramienta</h3>
                 <form onSubmit={crearInsumoBauche} className="space-y-3">
                   <div>
                     <label className="text-[10px] font-bold text-gray-400 uppercase italic">Tipo de Artículo</label>
                     <select className="w-full border-2 p-2 rounded-xl font-black text-xs bg-sky-50 text-[#117097] outline-none" value={insumoForm.tipo_item} onChange={e => setInsumoForm({ ...insumoForm, tipo_item: e.target.value })}>
-                      <option value="Consumible">🧪 CONSUMIBLE (Fertilizante, Veneno, Dosis)</option>
+                      <option value="Consumible">🧪 CONSUMIBLE (Fertilizante, Fungicida, Dosis)</option>
                       <option value="Herramienta">🛠️ HERRAMIENTA / ACTIVO (Motobomba, Manguera, Alambre)</option>
                     </select>
                   </div>
@@ -465,6 +468,21 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
                         {unidades.map(un => <option key={un} value={un}>{un}</option>)}
                       </select>
                     </div>
+                  </div>
+
+                  <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-200/80">
+                    <label className="text-[10px] font-black text-amber-900 uppercase italic block mb-1">
+                      📦 Cantidad / Existencias Iniciales
+                    </label>
+                    <input 
+                      type="number" 
+                      step="any" 
+                      className="w-full border-2 border-amber-300 p-2 rounded-xl font-black text-sm text-[#117097] bg-white outline-none focus:border-[#117097]" 
+                      value={insumoForm.cantidad_inicial} 
+                      onChange={e => setInsumoForm({...insumoForm, cantidad_inicial: e.target.value})} 
+                      placeholder="Ej: 10" 
+                      required 
+                    />
                   </div>
 
                   <div>
@@ -502,38 +520,35 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
                     </div>
                   )}
 
-                  <button type="submit" className="w-full py-3 bg-[#117097] text-white font-black rounded-xl uppercase text-xs tracking-widest hover:bg-[#0a4c68] transition-colors shadow-md">💾 Guardar Registro</button>
+                  <button type="submit" className="w-full py-3 bg-[#117097] text-white font-black rounded-xl uppercase text-xs tracking-widest hover:bg-[#0a4c68] transition-colors shadow-md cursor-pointer">💾 Guardar Registro</button>
                 </form>
               </div>
 
-              {/* CREAR NUEVAS UBICACIONES */}
               <div className="bg-slate-50 p-4 rounded-2xl border-2 border-slate-200 space-y-2">
                 <p className="text-[10px] font-black text-slate-600 uppercase italic">📍 Nueva Ubicación / Bodega Física</p>
                 <form onSubmit={agregarNuevaUbicacion} className="flex gap-2">
                   <input type="text" className="w-full border p-2 bg-white rounded-xl text-xs font-bold uppercase outline-none" value={nuevaUbicacionTexto} onChange={e => setNuevaUbicacionTexto(e.target.value)} placeholder="Ej: Cuarto de Herramientas" required />
-                  <button type="submit" className="px-3 bg-emerald-600 text-white font-black rounded-xl text-xs uppercase">+</button>
+                  <button type="submit" className="px-3 bg-emerald-600 text-white font-black rounded-xl text-xs uppercase cursor-pointer">+</button>
                 </form>
               </div>
             </div>
           )}
 
-          {/* TABLA DE BODEGA CON BOTÓN EXPORTAR EXCEL */}
+          {/* TABLA DE BODEGA */}
           <div className={`${esAdmin ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-200 flex flex-col`}>
             
-            {/* CABECERA CON FILTROS Y BOTÓN EXCEL */}
             <div className="p-4 bg-[#117097] text-white font-black text-xs uppercase tracking-wider flex flex-col xl:flex-row xl:items-center justify-between gap-3">
               
               <div className="flex items-center gap-2 flex-wrap">
-                <button onClick={() => setFiltroTipo('TODOS')} className={`px-2.5 py-1 rounded-lg text-[10px] uppercase font-black transition-all ${filtroTipo === 'TODOS' ? 'bg-white text-[#117097]' : 'bg-[#0a4c68] text-sky-100'}`}>Todos ({listaInventario.length})</button>
-                <button onClick={() => setFiltroTipo('Consumible')} className={`px-2.5 py-1 rounded-lg text-[10px] uppercase font-black transition-all ${filtroTipo === 'Consumible' ? 'bg-white text-[#117097]' : 'bg-[#0a4c68] text-sky-100'}`}>🧪 Consumibles</button>
-                <button onClick={() => setFiltroTipo('Herramienta')} className={`px-2.5 py-1 rounded-lg text-[10px] uppercase font-black transition-all ${filtroTipo === 'Herramienta' ? 'bg-white text-[#117097]' : 'bg-[#0a4c68] text-sky-100'}`}>🛠️ Herramientas / Activos</button>
+                <button onClick={() => setFiltroTipo('TODOS')} className={`px-2.5 py-1 rounded-lg text-[10px] uppercase font-black transition-all cursor-pointer ${filtroTipo === 'TODOS' ? 'bg-white text-[#117097]' : 'bg-[#0a4c68] text-sky-100'}`}>Todos ({listaInventario.length})</button>
+                <button onClick={() => setFiltroTipo('Consumible')} className={`px-2.5 py-1 rounded-lg text-[10px] uppercase font-black transition-all cursor-pointer ${filtroTipo === 'Consumible' ? 'bg-white text-[#117097]' : 'bg-[#0a4c68] text-sky-100'}`}>🧪 Consumibles</button>
+                <button onClick={() => setFiltroTipo('Herramienta')} className={`px-2.5 py-1 rounded-lg text-[10px] uppercase font-black transition-all cursor-pointer ${filtroTipo === 'Herramienta' ? 'bg-white text-[#117097]' : 'bg-[#0a4c68] text-sky-100'}`}>🛠️ Herramientas / Activos</button>
               </div>
 
               <div className="flex items-center gap-2 flex-wrap justify-end">
-                {/* ⚡ BOTÓN PARA EXPORTAR A EXCEL EN 2 HOJAS */}
                 <button
                   onClick={exportarInventarioAExcel}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase rounded-lg shadow transition-colors flex items-center gap-1"
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase rounded-lg shadow transition-colors flex items-center gap-1 cursor-pointer"
                 >
                   📊 EXPORTAR A EXCEL
                 </button>
@@ -572,9 +587,15 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
 
                       return (
                         <tr key={ins.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60 hover:bg-sky-50 transition-colors'}>
+                          
                           <td className="p-3 font-black text-slate-900 uppercase">
                             {editandoEste ? (
-                              <input type="text" className="border-2 px-2 py-1 rounded-lg w-full bg-white text-xs uppercase" value={filaEditable.nombre_insumo} onChange={e => setFilaEditable({...filaEditable, nombre_insumo: e.target.value})} />
+                              <div className="space-y-1">
+                                <input type="text" className="border-2 p-1 rounded-lg w-full bg-white text-xs font-black uppercase outline-none focus:border-[#117097]" value={filaEditable.nombre_insumo} onChange={e => setFilaEditable({...filaEditable, nombre_insumo: e.target.value})} placeholder="Nombre..." />
+                                <select className="border-2 p-1 rounded-lg w-full bg-white text-[10px] font-bold outline-none" value={filaEditable.categoria} onChange={e => setFilaEditable({...filaEditable, categoria: e.target.value})}>
+                                  {categorias.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                </select>
+                              </div>
                             ) : (
                               <div>
                                 <p className="font-black text-slate-900">{ins.nombre_insumo}</p>
@@ -584,26 +605,60 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
                           </td>
 
                           <td className="p-3 text-center">
-                            <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${ins.tipo_item === 'Consumible' ? 'bg-sky-100 text-[#117097]' : 'bg-purple-100 text-purple-800'}`}>
-                              {ins.tipo_item === 'Consumible' ? '🧪 Consumible' : '🛠️ Activo'}
-                            </span>
+                            {editandoEste ? (
+                              <select 
+                                className="border-2 p-1 rounded-lg bg-sky-50 text-[#117097] text-[10px] font-black outline-none"
+                                value={filaEditable.tipo_item}
+                                onChange={e => setFilaEditable({ ...filaEditable, tipo_item: e.target.value })}
+                              >
+                                <option value="Consumible">🧪 Consumible</option>
+                                <option value="Herramienta">🛠️ Herramienta / Activo</option>
+                              </select>
+                            ) : (
+                              <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${ins.tipo_item === 'Consumible' ? 'bg-sky-100 text-[#117097]' : 'bg-purple-100 text-purple-800'}`}>
+                                {ins.tipo_item === 'Consumible' ? '🧪 Consumible' : '🛠️ Activo'}
+                              </span>
+                            )}
                           </td>
 
                           <td className="p-3 text-center">
-                            <span className="inline-block bg-amber-100/80 text-amber-900 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase">
-                              📍 {ins.ubicacion || 'BODEGA PRINCIPAL'}
-                            </span>
+                            {editandoEste ? (
+                              <select 
+                                className="border-2 border-amber-300 bg-amber-50 p-1 rounded-lg text-[10px] font-black text-amber-900 outline-none max-w-[150px]"
+                                value={filaEditable.ubicacion}
+                                onChange={e => setFilaEditable({ ...filaEditable, ubicacion: e.target.value })}
+                              >
+                                <optgroup label="🏢 Bodegas & Áreas">
+                                  {listaUbicaciones.map(u => <option key={u.id} value={u.nombre}>{u.nombre}</option>)}
+                                </optgroup>
+                                <optgroup label="🌱 Invernaderos / Lotes">
+                                  {datosInvernaderos?.map(inv => <option key={inv.id} value={inv.nombre?.toUpperCase()}>{inv.nombre?.toUpperCase()}</option>)}
+                                </optgroup>
+                              </select>
+                            ) : (
+                              <span className="inline-block bg-amber-100/80 text-amber-900 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase">
+                                📍 {ins.ubicacion || 'BODEGA PRINCIPAL'}
+                              </span>
+                            )}
                           </td>
 
                           <td className={`p-3 text-right font-black text-xs ${estado.claseTexto}`}>
                             {editandoEste ? (
-                              <input type="number" step="any" className="border-2 px-2 py-1 rounded-lg w-20 text-right" value={filaEditable.cantidad_actual} onChange={e => setFilaEditable({...filaEditable, cantidad_actual: e.target.value})} />
+                              <input type="number" step="any" className="border-2 p-1 rounded-lg w-20 text-right font-black" value={filaEditable.cantidad_actual} onChange={e => setFilaEditable({...filaEditable, cantidad_actual: e.target.value})} />
                             ) : (
                               ins.cantidad_actual
                             )}
                           </td>
 
-                          <td className="p-3 text-center text-gray-400">{ins.unidad_medida}</td>
+                          <td className="p-3 text-center text-gray-400">
+                            {editandoEste ? (
+                              <select className="border-2 p-1 rounded-lg bg-white text-[10px] font-bold" value={filaEditable.unidad_medida} onChange={e => setFilaEditable({...filaEditable, unidad_medida: e.target.value})}>
+                                {unidades.map(un => <option key={un} value={un}>{un}</option>)}
+                              </select>
+                            ) : (
+                              ins.unidad_medida
+                            )}
+                          </td>
 
                           <td className="p-3 text-center">
                             <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase ${estado.claseTabla}`}>
@@ -615,13 +670,13 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
                             <td className="p-3 text-center">
                               {editandoEste ? (
                                 <div className="flex gap-1 justify-center">
-                                  <button onClick={() => guardarEdicionFila(ins.id)} className="bg-emerald-600 text-white px-2 py-1 rounded text-[9px] font-black">💾</button>
-                                  <button onClick={() => setIdEditando(null)} className="bg-gray-400 text-white px-2 py-1 rounded text-[9px] font-black">❌</button>
+                                  <button onClick={() => guardarEdicionFila(ins.id)} className="bg-emerald-600 text-white px-2 py-1 rounded text-[10px] font-black cursor-pointer shadow" title="Guardar Cambios">💾</button>
+                                  <button onClick={() => setIdEditando(null)} className="bg-gray-400 text-white px-2 py-1 rounded text-[10px] font-black cursor-pointer shadow" title="Cancelar">❌</button>
                                 </div>
                               ) : (
                                 <div className="flex gap-1 justify-center">
-                                  <button onClick={() => iniciarEdicion(ins)} className="p-1 bg-amber-100 text-amber-700 rounded border hover:bg-amber-600 hover:text-white text-xs">✏️</button>
-                                  <button onClick={() => eliminarInsumoCompleto(ins.id, ins.nombre_insumo)} className="p-1 bg-red-100 text-red-700 rounded border hover:bg-red-600 hover:text-white text-xs">🗑️</button>
+                                  <button onClick={() => iniciarEdicion(ins)} className="p-1.5 bg-amber-100 text-amber-700 rounded-lg border hover:bg-amber-600 hover:text-white text-xs cursor-pointer" title="Editar Registro">✏️</button>
+                                  <button onClick={() => eliminarInsumoCompleto(ins.id, ins.nombre_insumo)} className="p-1.5 bg-red-100 text-red-700 rounded-lg border hover:bg-red-600 hover:text-white text-xs cursor-pointer" title="Eliminar definitivamente">🗑️</button>
                                 </div>
                               )}
                             </td>
@@ -669,7 +724,7 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
               <label className="text-[10px] font-bold text-gray-400 uppercase italic">Observaciones / Proveedor</label>
               <textarea className="w-full border-2 p-3 rounded-xl font-bold h-20 bg-gray-50 uppercase focus:bg-white text-xs outline-none focus:border-[#117097]" value={entradaForm.observaciones} onChange={e => setEntradaForm({...entradaForm, observaciones: e.target.value})} placeholder="Ej: Comprado en Almacén El Ganadero" />
             </div>
-            <button type="submit" className="w-full py-4 bg-[#117097] hover:bg-[#0a4c68] transition-colors text-white font-black rounded-2xl uppercase tracking-widest text-xs shadow-lg">📈 Confirmar Compra e Incrementar Inventario</button>
+            <button type="submit" className="w-full py-4 bg-[#117097] hover:bg-[#0a4c68] transition-colors text-white font-black rounded-2xl uppercase tracking-widest text-xs shadow-lg cursor-pointer">📈 Confirmar Compra e Incrementar Inventario</button>
           </form>
         </div>
       )}
@@ -718,7 +773,7 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
               <label className="text-[10px] font-bold text-gray-400 uppercase italic">Nota de Aplicación / Dosis / Plaga</label>
               <textarea className="w-full border-2 p-3 rounded-xl font-bold h-20 bg-gray-50 uppercase focus:bg-white text-xs outline-none focus:border-[#117097]" value={salidaForm.nota_uso} onChange={e => setSalidaForm({...salidaForm, nota_uso: e.target.value})} placeholder="Ej: Control de roya con bomba de espalda" />
             </div>
-            <button type="submit" className="w-full py-4 bg-[#117097] hover:bg-[#0a4c68] transition-colors text-white font-black rounded-2xl uppercase tracking-widest text-xs shadow-lg">📉 Confirmar Aplicación y Descontar de Bodega</button>
+            <button type="submit" className="w-full py-4 bg-[#117097] hover:bg-[#0a4c68] transition-colors text-white font-black rounded-2xl uppercase tracking-widest text-xs shadow-lg cursor-pointer">📉 Confirmar Aplicación y Descontar de Bodega</button>
           </form>
         </div>
       )}
@@ -768,7 +823,7 @@ export default function Inventario({ mostrarAlerta, datosInvernaderos, userRole 
               <textarea className="w-full border-2 p-3 rounded-xl font-bold h-20 bg-gray-50 uppercase focus:bg-white text-xs outline-none focus:border-purple-800" value={reubicacionForm.observaciones} onChange={e => setReubicacionForm({ ...reubicacionForm, observaciones: e.target.value })} placeholder="Ej: Se entrega con tanque lleno de gasolina" />
             </div>
 
-            <button type="submit" className="w-full py-4 bg-purple-800 hover:bg-purple-900 transition-colors text-white font-black rounded-2xl uppercase tracking-widest text-xs shadow-lg">🔄 Actualizar Localización de Herramienta</button>
+            <button type="submit" className="w-full py-4 bg-purple-800 hover:bg-purple-900 transition-colors text-white font-black rounded-2xl uppercase tracking-widest text-xs shadow-lg cursor-pointer">🔄 Actualizar Localización de Herramienta</button>
           </form>
         </div>
       )}

@@ -8,8 +8,11 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
   const [invSeleccionado, setInvSeleccionado] = useState('');
   const [historicoNomina, setHistoricoNomina] = useState([]);
   const [historicoPagosNomina, setHistoricoPagosNomina] = useState([]);
+  
+  // ⚡ Estado para la vista SQL de ventas optimizadas desde Supabase
+  const [ventasOptimizadasBD, setVentasOptimizadasBD] = useState([]);
 
-  // Por defecto inicializa en 'historico_total' para coincidir con la vista completa
+  // Filtros de fecha
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [filtroPeriodoRapido, setFiltroPeriodoRapido] = useState('historico_total');
@@ -17,13 +20,29 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
 
   useEffect(() => {
     cargarNominaCompleta();
-  }, [datosEgresos]);
+    cargarVentasDesdeVistaSQL();
+  }, [datosEgresos, datosDespachos]);
+
+  const cargarVentasDesdeVistaSQL = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reporte_ventas_totales')
+        .select('*')
+        .order('fecha_venta', { ascending: false });
+
+      if (!error && data) {
+        setVentasOptimizadasBD(data);
+      }
+    } catch (err) {
+      console.error("Error consultando vista optimizada SQL, usando respaldo local:", err);
+    }
+  };
 
   const cargarNominaCompleta = async () => {
     try {
       const [resJornales, resPagosRealizados] = await Promise.all([
         supabase.from('nomina_jornales').select('*, nomina_trabajadores(nombre_completo), invernaderos(nombre)'),
-        supabase.from('nomina_pagos_realizados').select('*, nomina_trabajadores(nombre_completo)')
+        supabase.from('nomina_pagos_realizados').select('*, nomina_trabajadores(nombre_completo, tipo_pago)')
       ]);
 
       if (resJornales.data) setHistoricoNomina(resJornales.data);
@@ -57,6 +76,7 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
   // --- 1. SEPARACIÓN DE INVERNADEROS Y NOMBRES ---
   const invernaderosActivos = (listaInvernaderos || []).filter(inv => inv.activo !== false);
   const idsInvernaderosActivos = invernaderosActivos.map(inv => inv.id?.toString());
+  const numInvernaderosActivos = invernaderosActivos.length || 1;
   
   const objInvSeleccionado = (listaInvernaderos || []).find(i => i.id?.toString() === invSeleccionado);
   const nombreInvSeleccionado = objInvSeleccionado ? objInvSeleccionado.nombre?.toUpperCase() : 'TODOS LOS INVERNADEROS (EN PRODUCCIÓN)';
@@ -69,16 +89,16 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
     return true;
   };
 
-  // --- 2. FILTRADO CONHERENTE SEGÚN LA SELECCIÓN ---
-  // A. Despachos / Ventas
-  const despachosFiltrados = (datosDespachos || []).filter(d => {
+  // --- 2. FILTRADO COHERENTE CON PRORRATEO DE NÓMINA ---
+  const fuenteVentas = ventasOptimizadasBD.length > 0 ? ventasOptimizadasBD : (datosDespachos || []);
+
+  const despachosFiltrados = fuenteVentas.filter(d => {
     const coincideInv = !invSeleccionado 
       ? idsInvernaderosActivos.includes(d.invernadero_id?.toString()) 
       : d.invernadero_id?.toString() === invSeleccionado;
     return coincideInv && enRangoFecha(d.fecha_venta);
   });
 
-  // B. Gastos e Insumos (Filtrado estricto por lotes activos si no hay uno seleccionado)
   const egresosFiltrados = (datosEgresos || []).filter(g => {
     const coincideInv = !invSeleccionado 
       ? (!g.invernadero_id || idsInvernaderosActivos.includes(g.invernadero_id?.toString()))
@@ -86,29 +106,61 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
     return coincideInv && enRangoFecha(g.fecha_gasto);
   });
 
-  // C. Recaudos
   const idsDespachosFiltrados = despachosFiltrados.map(d => d.id?.toString());
   const pagosFiltrados = (datosPagos || []).filter(p => {
     const perteneceADespacho = idsDespachosFiltrados.includes(p.despacho_id?.toString());
     return perteneceADespacho && enRangoFecha(p.fecha_pago);
   });
 
-  // D. Nómina (Mano de Obra)
-  const nominaFiltrada = (historicoPagosNomina || []).filter(p => {
-    const coincideInv = !invSeleccionado
-      ? (!p.invernadero_nombre || invernaderosActivos.some(i => i.nombre?.toUpperCase() === p.invernadero_nombre?.toUpperCase()))
-      : (p.invernadero_nombre || '').toUpperCase().includes(nombreInvSeleccionado.toUpperCase());
-    return coincideInv && enRangoFecha(p.fecha_pago);
+  // 👥 CÁLCULO Y FILTRADO AVANZADO DE MANO DE OBRA (CON QUINCENAS Y PRORRATEO)
+  const nominaMapeada = (historicoPagosNomina || []).map(p => {
+    const invNombrePago = (p.invernadero_nombre || '').toUpperCase();
+    const esGeneral = !p.invernadero_nombre || invNombrePago.includes('GENERAL') || invNombrePago.includes('VARIOS');
+    
+    let coincide = false;
+    let montoCalculado = parseFloat(p.monto_pagado || 0);
+    let observacionProrrateo = '';
+
+    if (!invSeleccionado) {
+      coincide = true;
+    } else {
+      if (nombreInvSeleccionado && invNombrePago.includes(nombreInvSeleccionado)) {
+        coincide = true;
+      } else if (esGeneral) {
+        coincide = true;
+        montoCalculado = montoCalculado / numInvernaderosActivos;
+        observacionProrrateo = ` (Prorrateado 1/${numInvernaderosActivos})`;
+      }
+    }
+
+    return {
+      ...p,
+      coincide: coincide && enRangoFecha(p.fecha_pago),
+      montoAplicado: montoCalculado,
+      observacionProrrateo,
+      tipoPagoTrabajador: p.nomina_trabajadores?.tipo_pago || 'Jornalero'
+    };
   });
 
-  // --- 3. CÁLCULOS CONSOLIDADOS ---
+  const nominaFiltrada = nominaMapeada.filter(n => n.coincide);
+
+  // --- 3. CÁLCULOS CONSOLIDADOS Y SEPARACIÓN DE CONCEPTOS ---
   const totalVentas = despachosFiltrados.reduce((acc, d) => acc + parseFloat(d.total_venta || 0), 0);
   
   const totalInsumosGastos = egresosFiltrados
     .filter(g => g.categoria !== 'Mano de obra' && g.categoria !== 'Quincena')
     .reduce((acc, g) => acc + parseFloat(g.monto || 0), 0);
 
-  const totalManoObra = nominaFiltrada.reduce((acc, n) => acc + parseFloat(n.monto_pagado || 0), 0);
+  // Discriminación de Mano de Obra: Jornales vs Quincenas
+  const totalJornalesSabado = nominaFiltrada
+    .filter(n => (n.tipoPagoTrabajador || '').includes('Sábado') || (n.tipoPagoTrabajador || '').includes('Jornalero'))
+    .reduce((acc, n) => acc + n.montoAplicado, 0);
+
+  const totalQuincenasFijas = nominaFiltrada
+    .filter(n => (n.tipoPagoTrabajador || '').includes('Quincenal') || (n.tipoPagoTrabajador || '').includes('Fijo'))
+    .reduce((acc, n) => acc + n.montoAplicado, 0);
+
+  const totalManoObra = totalJornalesSabado + totalQuincenasFijas;
   const totalGastos = totalInsumosGastos + totalManoObra;
 
   const pagosRecibidos = pagosFiltrados.reduce((acc, p) => acc + parseFloat(p.monto || 0), 0);
@@ -122,26 +174,31 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
     { name: 'Utilidad', valor: utilidadNeta, color: '#3b82f6' }
   ];
 
-  // --- 📊 EXPORTAR A EXCEL ---
+  // --- 📊 EXPORTAR A EXCEL (CON DESGLOSE DE QUINCENA Y MANO DE OBRA) ---
   const exportarReporteAExcel = async () => {
     try {
       const workbook = new ExcelJS.Workbook();
       const hoyStr = new Date().toISOString().split('T')[0];
 
-      // HOJA 1: RESUMEN FINANCIERO
+      // HOJA 1: RESUMEN FINANCIERO DESGLOSADO
       const wsResumen = workbook.addWorksheet('Resumen Financiero');
       wsResumen.columns = [
-        { header: 'CONCEPTO FINANCIERO', key: 'concepto', width: 42 },
+        { header: 'CONCEPTO FINANCIERO', key: 'concepto', width: 45 },
         { header: 'VALOR TOTAL (COP)', key: 'valor', width: 25 }
       ];
 
       const filaVentas = wsResumen.addRow({ concepto: 'VENTAS TOTALES (INGRESOS)', valor: totalVentas });
-      const filaGastos = wsResumen.addRow({ concepto: 'GASTOS TOTALES (CON MANO DE OBRA)', valor: totalGastos });
+      const filaInsumos = wsResumen.addRow({ concepto: 'GASTOS DE INSUMOS Y MATERIALES', valor: totalInsumosGastos });
+      const filaJornales = wsResumen.addRow({ concepto: 'MANO DE OBRA - JORNALES (SÁBADO)', valor: totalJornalesSabado });
+      const filaQuincenas = wsResumen.addRow({ concepto: 'MANO DE OBRA - SUELDOS FIJOS (QUINCENAL)', valor: totalQuincenasFijas });
+      const filaTotalManoObra = wsResumen.addRow({ concepto: 'TOTAL MANO DE OBRA ACUMULADA', valor: totalManoObra });
+      const filaGastosTotales = wsResumen.addRow({ concepto: 'GASTOS TOTALES (INSUMOS + MANO DE OBRA)', valor: totalGastos });
       const filaUtilidad = wsResumen.addRow({ concepto: 'UTILIDAD NETA OPERACIONAL', valor: utilidadNeta });
       const filaMargen = wsResumen.addRow({ concepto: 'MARGEN DE RENDIMIENTO', valor: totalVentas > 0 ? (utilidadNeta / totalVentas) : 0 });
       const filaRecaudado = wsResumen.addRow({ concepto: 'TOTAL RECAUDADO (CAJA DE COBRO)', valor: pagosRecibidos });
       const filaCartera = wsResumen.addRow({ concepto: 'CUENTAS POR COBRAR (CARTERA PENDIENTE)', valor: cuentasPorCobrar });
 
+      // Formato Encabezado Hoja 1
       const headerRow1 = wsResumen.getRow(1);
       headerRow1.height = 24;
       headerRow1.eachCell(c => {
@@ -150,17 +207,31 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
         c.alignment = { vertical: 'middle', horizontal: 'center' };
       });
 
-      [filaVentas, filaGastos, filaUtilidad, filaMargen, filaRecaudado, filaCartera].forEach(row => {
+      // Estilos para Filas
+      [
+        filaVentas, filaInsumos, filaJornales, filaQuincenas, 
+        filaTotalManoObra, filaGastosTotales, filaUtilidad, 
+        filaMargen, filaRecaudado, filaCartera
+      ].forEach(row => {
         row.height = 22;
         row.getCell(1).font = { name: 'Arial', size: 10, bold: true };
         row.getCell(2).font = { name: 'Arial', size: 11, bold: true };
       });
 
+      // Colores de Enfasis
       filaVentas.getCell(2).font.color = { argb: 'FF15803D' };
-      filaGastos.getCell(2).font.color = { argb: 'FFB91C1C' };
+      filaInsumos.getCell(2).font.color = { argb: 'FFB91C1C' };
+      filaJornales.getCell(2).font.color = { argb: 'FFC2410C' };
+      filaQuincenas.getCell(2).font.color = { argb: 'FF6B21A8' };
+      filaTotalManoObra.getCell(2).font.color = { argb: 'FF0284C7' };
+      filaGastosTotales.getCell(2).font.color = { argb: 'FFB91C1C' };
       filaUtilidad.getCell(2).font.color = { argb: 'FF1D4ED8' };
 
-      [filaVentas, filaGastos, filaUtilidad, filaRecaudado, filaCartera].forEach(row => {
+      [
+        filaVentas, filaInsumos, filaJornales, filaQuincenas, 
+        filaTotalManoObra, filaGastosTotales, filaUtilidad, 
+        filaRecaudado, filaCartera
+      ].forEach(row => {
         row.getCell(2).numFmt = '"$"#,##0';
         row.getCell(2).alignment = { horizontal: 'right', vertical: 'middle' };
       });
@@ -182,8 +253,8 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
         wsVentas.addRow({
           fecha: d.fecha_venta || '',
           remision: d.numero_remision || 'S/N',
-          inv: (d.invernaderos?.nombre || 'General').toUpperCase(),
-          cliente: (d.clientes?.nombre_completo || 'Particular').toUpperCase(),
+          inv: (d.invernadero_nombre || d.invernaderos?.nombre || 'General').toUpperCase(),
+          cliente: (d.cliente_nombre || d.clientes?.nombre_completo || 'Particular').toUpperCase(),
           total: parseFloat(d.total_venta || 0)
         });
       });
@@ -226,35 +297,37 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
       filaTotG.getCell('desc').font = { name: 'Arial', size: 10, bold: true };
       filaTotG.getCell('monto').font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFB91C1C' } };
 
-      // HOJA 4: DETALLE MANO DE OBRA
+      // HOJA 4: DETALLE MANO DE OBRA (COMPLETA CON QUINCENAS Y JORNALES)
       const wsManoObra = workbook.addWorksheet('Detalle Mano de Obra');
       wsManoObra.columns = [
         { header: 'COMP. N°', key: 'comp', width: 14 },
         { header: 'FECHA PAGO', key: 'fecha', width: 15 },
-        { header: 'INVERNADERO', key: 'inv', width: 22 },
+        { header: 'INVERNADERO', key: 'inv', width: 25 },
         { header: 'COLABORADOR', key: 'nombre', width: 30 },
-        { header: 'NETO PAGADO', key: 'monto', width: 20 }
+        { header: 'MODALIDAD PAGO', key: 'tipo', width: 22 },
+        { header: 'NETO ASIGNADO / PAGADO', key: 'monto', width: 24 }
       ];
 
       nominaFiltrada.forEach(n => {
         wsManoObra.addRow({
           comp: `NOM-${String(n.id).padStart(4, '0')}`,
           fecha: n.fecha_pago || '',
-          inv: (n.invernadero_nombre || 'GENERAL / VARIOS').toUpperCase(),
+          inv: `${(n.invernadero_nombre || 'GENERAL / VARIOS').toUpperCase()}${n.observacionProrrateo}`,
           nombre: (n.nomina_trabajadores?.nombre_completo || 'OPERARIO').toUpperCase(),
-          monto: parseFloat(n.monto_pagado || 0)
+          tipo: (n.tipoPagoTrabajador || 'Jornalero').toUpperCase(),
+          monto: parseFloat(n.montoAplicado || 0)
         });
       });
 
       const ultFilaM = wsManoObra.rowCount;
       const filaTotM = wsManoObra.addRow({
-        nombre: 'TOTAL MANO DE OBRA:',
-        monto: { formula: `=SUM(E2:E${ultFilaM})` }
+        tipo: 'TOTAL MANO DE OBRA:',
+        monto: { formula: `=SUM(F2:F${ultFilaM})` }
       });
-      filaTotM.getCell('nombre').font = { name: 'Arial', size: 10, bold: true };
+      filaTotM.getCell('tipo').font = { name: 'Arial', size: 10, bold: true };
       filaTotM.getCell('monto').font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF6B21A8' } };
 
-      // FORMATEO VISUAL UNIFORME DE TABLAS
+      // Formateo visual uniforme
       [wsVentas, wsGastos, wsManoObra].forEach(ws => {
         const head = ws.getRow(1);
         head.height = 24;
@@ -315,11 +388,10 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
       <div className="bg-white p-6 rounded-3xl shadow-xl border-t-8 border-[#117097] space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           
-          {/* SELECTOR ORGANIZADO CON GRUPOS DE OPERATIVOS Y ARCHIVADOS */}
           <div>
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest italic px-1">Análisis de Invernadero / Bloque</label>
             <select 
-              className="w-full border-2 p-3 rounded-2xl font-black text-slate-800 bg-white mt-1 outline-none focus:border-[#117097] text-xs shadow-sm"
+              className="w-full border-2 p-3 rounded-2xl font-black text-slate-800 bg-white mt-1 outline-none focus:border-[#117097] text-xs shadow-sm cursor-pointer"
               value={invSeleccionado}
               onChange={(e) => setInvSeleccionado(e.target.value)}
             >
@@ -356,9 +428,9 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
 
         <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3">
           <div className="flex gap-1.5 flex-wrap">
-            <button onClick={() => aplicarPeriodoRapido('mes_actual')} className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${filtroPeriodoRapido === 'mes_actual' ? 'bg-[#117097] text-white shadow' : 'bg-slate-100 text-slate-600'}`}>📅 Mes Actual</button>
-            <button onClick={() => aplicarPeriodoRapido('ano_actual')} className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${filtroPeriodoRapido === 'ano_actual' ? 'bg-[#117097] text-white shadow' : 'bg-slate-100 text-slate-600'}`}>🗓️ Año 2026</button>
-            <button onClick={() => aplicarPeriodoRapido('historico_total')} className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${filtroPeriodoRapido === 'historico_total' ? 'bg-[#117097] text-white shadow' : 'bg-slate-100 text-slate-600'}`}>🌐 Histórico Todo</button>
+            <button onClick={() => aplicarPeriodoRapido('mes_actual')} className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all cursor-pointer ${filtroPeriodoRapido === 'mes_actual' ? 'bg-[#117097] text-white shadow' : 'bg-slate-100 text-slate-600'}`}>📅 Mes Actual</button>
+            <button onClick={() => aplicarPeriodoRapido('ano_actual')} className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all cursor-pointer ${filtroPeriodoRapido === 'ano_actual' ? 'bg-[#117097] text-white shadow' : 'bg-slate-100 text-slate-600'}`}>🗓️ Año 2026</button>
+            <button onClick={() => aplicarPeriodoRapido('historico_total')} className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all cursor-pointer ${filtroPeriodoRapido === 'historico_total' ? 'bg-[#117097] text-white shadow' : 'bg-slate-100 text-slate-600'}`}>🌐 Histórico Todo</button>
           </div>
 
           <button
@@ -373,7 +445,7 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
       {/* CARDS DINÁMICAS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-3xl shadow-xl border-b-4 border-red-500 text-center flex flex-col justify-center">
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider italic">Gastos Totales (Insumos + Mano de Obra)</p>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider italic">Gastos Totales (Insumos + Mano Obra)</p>
           <p className="text-xl font-black text-red-600 mt-1">{formatoPesos(totalGastos)}</p>
         </div>
         <div className="bg-white p-5 rounded-3xl shadow-xl border-b-4 border-green-600 text-center flex flex-col justify-center">
@@ -429,9 +501,9 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
         <div className="p-4 bg-slate-800 text-white font-black text-xs uppercase tracking-wider flex justify-between items-center flex-wrap gap-2">
           <span>🔍 Explorador de Registros Filtrados ({nombreInvSeleccionado})</span>
           <div className="flex gap-2">
-            <button onClick={() => setTabDetalleAccion('ventas')} className={`px-3 py-1 rounded-lg text-[10px] uppercase font-black transition-all ${tabDetalleAccion === 'ventas' ? 'bg-[#117097] text-white' : 'bg-slate-700 text-slate-300'}`}>🛒 Ventas ({despachosFiltrados.length})</button>
-            <button onClick={() => setTabDetalleAccion('gastos')} className={`px-3 py-1 rounded-lg text-[10px] uppercase font-black transition-all ${tabDetalleAccion === 'gastos' ? 'bg-[#117097] text-white' : 'bg-slate-700 text-slate-300'}`}>💸 Insumos ({egresosFiltrados.length})</button>
-            <button onClick={() => setTabDetalleAccion('nomina')} className={`px-3 py-1 rounded-lg text-[10px] uppercase font-black transition-all ${tabDetalleAccion === 'nomina' ? 'bg-[#117097] text-white' : 'bg-slate-700 text-slate-300'}`}>👥 Mano Obra ({nominaFiltrada.length})</button>
+            <button onClick={() => setTabDetalleAccion('ventas')} className={`px-3 py-1 rounded-lg text-[10px] uppercase font-black transition-all cursor-pointer ${tabDetalleAccion === 'ventas' ? 'bg-[#117097] text-white' : 'bg-slate-700 text-slate-300'}`}>🛒 Ventas ({despachosFiltrados.length})</button>
+            <button onClick={() => setTabDetalleAccion('gastos')} className={`px-3 py-1 rounded-lg text-[10px] uppercase font-black transition-all cursor-pointer ${tabDetalleAccion === 'gastos' ? 'bg-[#117097] text-white' : 'bg-slate-700 text-slate-300'}`}>💸 Insumos ({egresosFiltrados.length})</button>
+            <button onClick={() => setTabDetalleAccion('nomina')} className={`px-3 py-1 rounded-lg text-[10px] uppercase font-black transition-all cursor-pointer ${tabDetalleAccion === 'nomina' ? 'bg-[#117097] text-white' : 'bg-slate-700 text-slate-300'}`}>👥 Mano Obra ({nominaFiltrada.length})</button>
           </div>
         </div>
 
@@ -452,8 +524,8 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
                   <tr key={d.id} className="hover:bg-slate-50">
                     <td className="p-3">{d.fecha_venta}</td>
                     <td className="p-3 font-black text-[#117097]">{d.numero_remision || 'S/N'}</td>
-                    <td className="p-3 uppercase">{d.invernaderos?.nombre || 'General'}</td>
-                    <td className="p-3 uppercase">{d.clientes?.nombre_completo || 'Particular'}</td>
+                    <td className="p-3 uppercase">{d.invernadero_nombre || d.invernaderos?.nombre || 'General'}</td>
+                    <td className="p-3 uppercase">{d.cliente_nombre || d.clientes?.nombre_completo || 'Particular'}</td>
                     <td className="p-3 text-right text-emerald-700 font-black">{formatoPesos(d.total_venta)}</td>
                   </tr>
                 ))}
@@ -492,9 +564,10 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
                 <tr className="bg-slate-100 text-slate-600 uppercase font-black border-b sticky top-0">
                   <th className="p-3 text-center">Comp. N°</th>
                   <th className="p-3">Fecha Pago</th>
-                  <th className="p-3">Invernadero</th>
+                  <th className="p-3">Invernadero / Asignación</th>
                   <th className="p-3">Trabajador</th>
-                  <th className="p-3 text-right">Neto Entregado</th>
+                  <th className="p-3">Modalidad</th>
+                  <th className="p-3 text-right">Neto Aplicado</th>
                 </tr>
               </thead>
               <tbody className="divide-y font-bold text-slate-700">
@@ -502,9 +575,12 @@ export default function ReporteVentas({ listaInvernaderos, datosDespachos, datos
                   <tr key={n.id} className="hover:bg-slate-50">
                     <td className="p-3 text-center font-black text-slate-500">NOM-{String(n.id).padStart(4, '0')}</td>
                     <td className="p-3">{n.fecha_pago}</td>
-                    <td className="p-3 uppercase font-black text-[#117097]">{n.invernadero_nombre || 'GENERAL / VARIOS'}</td>
+                    <td className="p-3 uppercase font-black text-[#117097]">
+                      {n.invernadero_nombre || 'GENERAL / VARIOS'}{n.observacionProrrateo}
+                    </td>
                     <td className="p-3 uppercase">{n.nomina_trabajadores?.nombre_completo || 'OPERARIO'}</td>
-                    <td className="p-3 text-right text-purple-800 font-black">{formatoPesos(n.monto_pagado)}</td>
+                    <td className="p-3 uppercase text-slate-500">{n.tipoPagoTrabajador}</td>
+                    <td className="p-3 text-right text-purple-800 font-black">{formatoPesos(n.montoAplicado)}</td>
                   </tr>
                 ))}
               </tbody>
